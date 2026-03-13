@@ -169,8 +169,8 @@ def works_to_df(works):
             "authors": "|".join(authors),
             "topic":   topic,
         })
-    return pd.DataFrame(rows)
-
+def gb_to_df(gb):
+    return pd.DataFrame([{"name": g["key_display_name"] or g["key"], "count": g["count"]} for g in gb])
 
 # ── Load all data once at startup ─────────────────────────────────────────────
 
@@ -199,10 +199,19 @@ authors_gb = []
 topics_gb = []
 oa_gb = []
 type_gb = []
+pubs_year    = pd.DataFrame()             
+top_journals = pd.DataFrame()
+top_cited    = pd.DataFrame()
+authors_df   = pd.DataFrame()
+topics_df    = pd.DataFrame()
+oa_df        = pd.DataFrame()
+type_df      = pd.DataFrame()
 
 def load_all_data():
-    global df, institution, funders_df, authors_gb, topics_gb, oa_gb, type_gb, data_ready
-    
+    global df, institution, funders_df, authors_gb, topics_gb, oa_gb, type_gb
+    global pubs_year, top_journals, top_cited, authors_df, topics_df, oa_df, type_df
+    global data_ready
+
     print("Fetching institution info…")
     institution = fetch_institution()
     print("Fetching works…")
@@ -210,52 +219,33 @@ def load_all_data():
     df = works_to_df(works_raw)
 
     print("Fetching group-by data…")
-    funders_df = fetch_funders()
-    authors_gb = fetch_group_by("authorships.author.id", 10)
-    topics_gb  = fetch_group_by("primary_topic.id", 10)
-    oa_gb      = fetch_group_by("open_access.oa_status")
-    type_gb    = fetch_group_by("type")
-    
+    funders_df  = fetch_funders()
+    authors_gb  = fetch_group_by("authorships.author.id", 10)
+    topics_gb   = fetch_group_by("primary_topic.id", 10)
+    oa_gb       = fetch_group_by("open_access.oa_status")
+    type_gb     = fetch_group_by("type")
+
+    pubs_year = (
+        df[df["year"].notna() & (df["year"] >= 2000)]
+        .groupby("year").size().reset_index(name="count")
+        .sort_values("year")
+    )
+    top_journals = (
+        df[df["journal"] != ""]
+        .groupby("journal").size().reset_index(name="count")
+        .sort_values("count", ascending=False)
+        .head(12)
+    )
+    top_cited  = df.sort_values("citations", ascending=False).head(25).copy()
+    authors_df = gb_to_df(authors_gb)
+    topics_df  = gb_to_df(topics_gb)
+    oa_df      = pd.DataFrame([{"name": g["key"], "count": g["count"]} for g in oa_gb])
+    type_df    = gb_to_df(type_gb)
+
     data_ready = True
     print(f"Loaded {len(df)} works.\n")
 
 threading.Thread(target=load_all_data, daemon=True).start()
-
-# ── Derived data ──────────────────────────────────────────────────────────────
-
-# Publications per year
-pubs_year = (
-    df[df["year"].notna() & (df["year"] >= 2000)]
-    .groupby("year").size().reset_index(name="count")
-    .sort_values("year")
-)
-
-# Top journals
-top_journals = (
-    df[df["journal"] != ""]
-    .groupby("journal").size().reset_index(name="count")
-    .sort_values("count", ascending=False)
-    .head(12)
-)
-
-# Top cited
-top_cited = df.sort_values("citations", ascending=False).head(25).copy()
-
-# OA counts
-oa_count   = (df["oa"] == "Yes").sum()
-oa_pct     = round(oa_count / len(df) * 100) if len(df) else 0
-total_cit  = df["citations"].sum()
-avg_cit    = round(df["citations"].mean(), 1) if len(df) else 0
-
-# Group-by helpers
-def gb_to_df(gb):
-    return pd.DataFrame([{"name": g["key_display_name"] or g["key"], "count": g["count"]} for g in gb])
-
-authors_df = gb_to_df(authors_gb)
-topics_df  = gb_to_df(topics_gb)
-oa_df      = pd.DataFrame([{"name": g["key"], "count": g["count"]} for g in oa_gb])
-type_df    = gb_to_df(type_gb)
-
 
 # ── Figures ───────────────────────────────────────────────────────────────────
 FONT = dict(family="Georgia, serif", color=TEXT)
@@ -1075,6 +1065,8 @@ def render_tab(tab, year_range, n):
 
 
 # ── Run ───────────────────────────────────────────────────────────────────────
+port = int(os.environ.get("PORT", 8050))
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8050))
+    threading.Thread(target=load_all_data, daemon=True).start()
     app.run(debug=False, host="0.0.0.0", port=port)
