@@ -23,6 +23,8 @@ import os
 import pickle
 import time
 
+import threading
+
 CACHE_FILE = "works_cache.pkl"
 CACHE_MAX_AGE_HOURS = 24
 
@@ -47,6 +49,15 @@ OA_COLORS  = ["#1f1f1f",  "#00b300", LSU_GOLD, "#7e4c39", "#3833ea", "#a6a6a6"]
 
 PARAMS_BASE = {"api_key": API_KEY, "mailto": "lsulibrary@lsu.edu"}
 
+# ── Global data storage ──
+data_ready = False
+df = pd.DataFrame()
+institution = {}
+funders_df = pd.DataFrame()
+authors_gb = []
+topics_gb = []
+oa_gb = []
+type_gb = []
 
 # ── Data fetching ─────────────────────────────────────────────────────────────
 
@@ -180,20 +191,35 @@ def load_or_fetch_works():
         pickle.dump(data, f)
     return data
 
-print("Fetching institution info…")
-institution = fetch_institution()
-print("Fetching works…")
-works_raw = load_or_fetch_works()
-df = works_to_df(works_raw)
+data_ready = False
+df = pd.DataFrame()
+institution = {}
+funders_df = pd.DataFrame()
+authors_gb = []
+topics_gb = []
+oa_gb = []
+type_gb = []
 
-print("Fetching group-by data…")
-funders_df = fetch_funders()
-authors_gb = fetch_group_by("authorships.author.id", 10)
-topics_gb  = fetch_group_by("primary_topic.id", 10)
-oa_gb      = fetch_group_by("open_access.oa_status")
-type_gb    = fetch_group_by("type")
+def load_all_data():
+    global df, institution, funders_df, authors_gb, topics_gb, oa_gb, type_gb, data_ready
+    
+    print("Fetching institution info…")
+    institution = fetch_institution()
+    print("Fetching works…")
+    works_raw = load_or_fetch_works()
+    df = works_to_df(works_raw)
 
-print(f"Loaded {len(df)} works.\n")
+    print("Fetching group-by data…")
+    funders_df = fetch_funders()
+    authors_gb = fetch_group_by("authorships.author.id", 10)
+    topics_gb  = fetch_group_by("primary_topic.id", 10)
+    oa_gb      = fetch_group_by("open_access.oa_status")
+    type_gb    = fetch_group_by("type")
+    
+    data_ready = True
+    print(f"Loaded {len(df)} works.\n")
+
+threading.Thread(target=load_all_data, daemon=True).start()
 
 # ── Derived data ──────────────────────────────────────────────────────────────
 
@@ -611,6 +637,7 @@ app.layout = html.Div(style={"minHeight": "100vh", "background": BG_COLOR, "font
                 tooltip={"always_visible": False},
             ),
         ]),
+        dcc.Interval(id="load-interval", interval=3000, n_intervals=0),
         dcc.Tabs(id="tabs", value="overview", style={"borderBottom": f"1px solid {BORDER}"}, children=[
             dcc.Tab(label="Overview",          value="overview",        style=S["tab_style"], selected_style=S["tab_selected"]),
             dcc.Tab(label="Recent Publications",      value="publications",    style=S["tab_style"], selected_style=S["tab_selected"]),
@@ -639,12 +666,18 @@ app.layout = html.Div(style={"minHeight": "100vh", "background": BG_COLOR, "font
 @app.callback(
     Output("tab-content", "children"),
     Input("tabs", "value"),
-    Input("year-slider", "value")
+    Input("year-slider", "value"),
+    Input("load-interval", "n_intervals")
 )
-def render_tab(tab, year_range):
-    year_min, year_max = year_range
-    fdf = df[df["year"].between(year_min, year_max)].copy()
-
+def render_tab(tab, year_range, n):
+    if not data_ready:
+        return html.Div([
+            html.H3("Loading data from OpenAlex...", 
+                    style={"textAlign": "center", "color": LSU_PURPLE, "marginTop": "100px"}),
+            html.P("This may take a few minutes on first load.", 
+                   style={"textAlign": "center", "color": MUTED}),
+        ])
+        
     top_n = 5
 
     top_publishers = (
