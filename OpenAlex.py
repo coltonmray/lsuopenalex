@@ -7,6 +7,11 @@ Run:
 
 Then open http://localhost:8050 in your browser.
 """
+import datetime
+import os
+import pickle
+import time
+import threading
 
 import requests
 import pandas as pd
@@ -16,17 +21,6 @@ import dash
 from dash import Dash, dcc, html, dash_table, Input, Output, State
 import plotly.express as px
 import plotly.graph_objects as go
-
-import datetime
-
-import os
-import pickle
-import time
-
-import threading
-
-CACHE_FILE = "works_cache.pkl"
-CACHE_MAX_AGE_HOURS = 24
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 INSTITUTION_ID = "I121820613"
@@ -169,6 +163,7 @@ def works_to_df(works):
             "authors": "|".join(authors),
             "topic":   topic,
         })
+        return pd.DataFrame(rows)
 def gb_to_df(gb):
     return pd.DataFrame([{"name": g["key_display_name"] or g["key"], "count": g["count"]} for g in gb])
 
@@ -257,61 +252,6 @@ LAYOUT_BASE = dict(
     xaxis=dict(showgrid=False, linecolor=BORDER, tickcolor=BORDER, tickfont=dict(color=MUTED, size=11)),
     yaxis=dict(showgrid=True, gridcolor=BORDER, linecolor=BORDER, tickfont=dict(color=MUTED, size=11)),
 )
-
-
-def fig_pubs_year():
-    fig = px.bar(pubs_year, x="year", y="count", color_discrete_sequence=[LSU_PURPLE])
-    fig.update_layout(**LAYOUT_BASE, title=None)
-    fig.update_traces(marker_line_width=0)
-    return fig
-
-def fig_journals():
-    fig = px.bar(
-        top_journals.sort_values("count"), x="count", y="journal",
-        orientation="h", color_discrete_sequence=[LSU_GOLD_D],
-    )
-    layout = {
-        **LAYOUT_BASE,
-        "yaxis": dict(showgrid=False, linecolor=BORDER, tickfont=dict(color=TEXT, size=11)),
-        "xaxis": dict(showgrid=True, gridcolor=BORDER, linecolor=BORDER, tickfont=dict(color=MUTED, size=11)),
-        "title": None,
-        "height": 340,
-    }
-    fig.update_layout(**layout)
-    fig.update_traces(marker_line_width=0)
-    return fig
-
-
-def fig_oa_pie():
-    fig = px.pie(
-        oa_df, names="name", values="count",
-        color_discrete_sequence=OA_COLORS,
-        hole=0.4,
-    )
-    fig.update_layout(font=FONT, paper_bgcolor=WHITE, margin=dict(l=10, r=10, t=10, b=10),
-                      legend=dict(font=dict(size=12)))
-    fig.update_traces(textinfo="none", textfont_size=12)
-    return fig
-
-
-def fig_types():
-    fig = px.pie(
-        type_df, names="name", values="count",
-        color_discrete_sequence=OA_COLORS,
-        hole=0.4,
-    )
-    fig.update_traces(textinfo="none")
-    fig.update_layout(font=FONT, paper_bgcolor=WHITE, margin=dict(l=10, r=10, t=10, b=10),
-                      legend=dict(font=dict(size=12)))
-    return fig
-
-
-def fig_oa_trend():
-    fig = px.bar(pubs_year.tail(15), x="year", y="count", color_discrete_sequence=[GREEN])
-    fig.update_layout(**LAYOUT_BASE, title=None)
-    fig.update_traces(marker_line_width=0)
-    return fig
-
 
 # ── Styles ────────────────────────────────────────────────────────────────────
 S = {
@@ -655,10 +595,32 @@ app.layout = html.Div(style={"minHeight": "100vh", "background": BG_COLOR, "font
 # ── Tab callback ──────────────────────────────────────────────────────────────
 @app.callback(
     Output("tab-content", "children"),
+    Output("top-stats", "children"),
     Input("tabs", "value"),
     Input("year-slider", "value"),
     Input("load-interval", "n_intervals")
 )
+
+def update_top_stats(year_range, n):
+    if not data_ready:
+        return []
+    year_min, year_max = year_range
+    fdf = df[df["year"].between(year_min, year_max)]
+    total     = len(fdf)
+    total_cit = int(fdf["citations"].sum())
+    avg_cit   = round(fdf["citations"].mean(), 1) if total else 0
+    oa_count  = int((fdf["oa"] == "Yes").sum())
+    oa_pct    = round(oa_count / total * 100) if total else 0
+    apc_sum   = int(fdf["apc_list"].sum(skipna=True))
+    apc_coverage = fdf["apc_list"].notna().sum()
+    return [
+        stat_card("Works",           f"{total:,}",      f"{year_min}–{year_max}",                    LSU_PURPLE),
+        stat_card("Total Citations", f"{total_cit:,}",  "across filtered works",                     LSU_GOLD_D),
+        stat_card("Avg Citations",   f"{avg_cit}",      "per work",                                  "#7c3aed"),
+        stat_card("Open Access",     f"{oa_pct}%",      f"{oa_count} OA works",                      GREEN),
+        stat_card("Est. APC Spend",  f"${apc_sum:,}",   f"based on {apc_coverage} of {total} works", "#dc2626"),
+    ]
+
 def render_tab(tab, year_range, n):
     if not data_ready:
         return html.Div([
@@ -667,7 +629,9 @@ def render_tab(tab, year_range, n):
             html.P("This may take a few minutes on first load.", 
                    style={"textAlign": "center", "color": MUTED}),
         ])
-        
+    year_min, year_max = year_range        
+    fdf = df[df["year"].between(year_min, year_max)].copy()
+       
     top_n = 5
 
     top_publishers = (
@@ -1068,5 +1032,4 @@ def render_tab(tab, year_range, n):
 port = int(os.environ.get("PORT", 8050))
 
 if __name__ == "__main__":
-    threading.Thread(target=load_all_data, daemon=True).start()
     app.run(debug=False, host="0.0.0.0", port=port)
