@@ -1,0 +1,5 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/lsuopenalex
+    - /bin/cp -r * $DEPLOYPATH
