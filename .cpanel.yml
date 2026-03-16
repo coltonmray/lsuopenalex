@@ -1,5 +1,5 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/lsuopenalex
+    - export DEPLOYPATH=/home/lsuopena/public_html/
     - /bin/cp -r * $DEPLOYPATH
