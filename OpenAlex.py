@@ -202,6 +202,36 @@ topics_df    = pd.DataFrame()
 oa_df        = pd.DataFrame()
 type_df      = pd.DataFrame()
 
+DB_CONFIG = {
+    "host":     "localhost",
+    "port":     3306,
+    "user":     "lsuopena_user",
+    "password": "Scholarlypubs",
+    "database": "lsuopena_database",
+}
+
+def load_from_db():
+    conn = mysql.connector.connect(**DB_CONFIG)
+    df = pd.read_sql("SELECT * FROM works", conn)
+    conn.close()
+    return df
+
+def needs_refresh():
+    try:
+        conn = mysql.connector.connect(**DB_CONFIG)
+        cursor = conn.cursor()
+        cursor.execute("SELECT last_fetched FROM cache_meta WHERE id=1")
+        row = cursor.fetchone()
+        cursor.close()
+        conn.close()
+        if row:
+            age_hours = (datetime.datetime.now() - row[0]).total_seconds() / 3600
+            return age_hours > 24
+        return True
+    except:
+        return True
+
+
 def load_all_data():
     global df, institution, funders_df, authors_gb, topics_gb, oa_gb, type_gb
     global pubs_year, top_journals, top_cited, authors_df, topics_df, oa_df, type_df
@@ -209,9 +239,14 @@ def load_all_data():
 
     print("Fetching institution info…")
     institution = fetch_institution()
-    print("Fetching works…")
-    works_raw = load_or_fetch_works()
-    df = works_to_df(works_raw)
+    if needs_refresh():
+        print("Fetching fresh data from OpenAlex...")
+        works_raw = fetch_works(start_year=2020, end_year=CURRENT_YEAR)
+        df = works_to_df(works_raw)
+        save_to_db(df)
+    else:
+        print("Loading from database...")
+        df = load_from_db()
 
     print("Fetching group-by data…")
     funders_df  = fetch_funders()
