@@ -29,7 +29,14 @@ INSTITUTION_ID, ROR_ID = "I121820613", "05ect4e57"
 API_KEY = os.getenv("OPENALEX_API_KEY")
 BASE_URL = "https://api.openalex.org"
 PORT = int(os.environ.get("PORT", 8050))
-CACHE_FILE, CACHE_MAX_AGE_HOURS = "works_cache.pkl", 24
+
+HOME_DIR = os.path.expanduser("~")
+DATA_DIR = os.path.join(HOME_DIR, "openalex_data")
+os.makedirs(DATA_DIR, exist_ok=True)
+CACHE_FILE = os.path.join(DATA_DIR, "works_cache.pkl")
+DB_FILE = os.path.join(DATA_DIR, "works.db") 
+CACHE_MAX_AGE_HOURS = 24
+
 CURRENT_YEAR = datetime.date.today().year
 
 # Colors
@@ -157,7 +164,7 @@ def load_all_data():
     print("Loading works...")
     df = works_to_df(load_or_fetch_works())
     df = df.loc[:, df.columns.notnull()].rename(columns=lambda x: str(x).strip())
-    conn = sqlite3.connect("works.db")
+    conn = sqlite3.connect(DB_FILE)
     df.to_sql("works", conn, if_exists="replace", index=False)
     conn.close()
     data_ready = True
