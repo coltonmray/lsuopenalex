@@ -570,8 +570,6 @@ const CONFIG = {
   MAILTO: "lsulibrary@lsu.edu",
   START_YEAR: 2020,
   CURRENT_YEAR: new Date().getFullYear(),
-  CACHE_KEY: "lsu_openalex_works_cache",
-  CACHE_TIME_KEY: "lsu_openalex_works_cache_time",
   CACHE_MAX_AGE_HOURS: 24,
 };
 
@@ -606,22 +604,32 @@ const DB_NAME = "lsu_openalex_cache";
 const DB_VERSION = 1;
 const STORE_NAME = "works";
 
+let dbPromise = null;
+
 function openDB() {
-  return new Promise((resolve, reject) => {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, DB_VERSION);
     req.onerror = () => reject(req.error);
     req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE_NAME);
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_NAME)) {
+        db.createObjectStore(STORE_NAME);
+      }
     };
     req.onsuccess = () => resolve(req.result);
   });
+  return dbPromise;
 }
 
 async function idbSet(key, value) {
   const db = await openDB();
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  tx.objectStore(STORE_NAME).put(value, key);
-  return tx.complete;
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_NAME, "readwrite");
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+    tx.objectStore(STORE_NAME).put(value, key);
+  });
 }
 
 async function idbGet(key) {
@@ -778,10 +786,12 @@ function getLSUAuthors(work) {
 }
 
 function filterWorksByYear(works, minYear, maxYear) {
-  return works.filter(w => {
-    const year = w.publication_year;
-    return year >= minYear && year <= maxYear;
-  });
+  const out = [];
+  for (let i = 0; i < works.length; i++) {
+    const y = works[i].publication_year;
+    if (y >= minYear && y <= maxYear) out.push(works[i]);
+  }
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -852,8 +862,9 @@ function updateStats(works, yearMin, yearMax) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function destroyChart(chartName) {
-  if (charts[chartName]) {
-    charts[chartName].destroy();
+  const c = charts[chartName];
+  if (c && typeof c.destroy === "function") {
+    c.destroy();
     charts[chartName] = null;
   }
 }
@@ -1612,7 +1623,11 @@ function updateDashboard() {
 // Slider Sync
 // ═══════════════════════════════════════════════════════════════════════════
 
+let debounceTimer;
+  
 function syncSliders() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
   const minSlider = document.getElementById('year-min');
   const maxSlider = document.getElementById('year-max');
   
@@ -1629,7 +1644,8 @@ function syncSliders() {
     maxSlider.value = minVal;
   }
   
-  updateDashboard();
+    updateDashboard();
+  }, 120);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1638,9 +1654,20 @@ function syncSliders() {
 
 async function init() {
   try {
-    // Fetch data
-    allWorks = await fetchWorks();
-    fundersData = await fetchFunders();
+    // Try instant cache render FIRST
+    const cached = await loadCache();
+    if (cached && cached.length) {
+      allWorks = cached;
+      updateDashboard();
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+    }
+
+    // Fetch fresh data in background
+    [allWorks, fundersData] = await Promise.all([
+      fetchWorks(),
+      fetchFunders()
+    ]);
     
     // Find year range
     const years = allWorks.map(w => w.publication_year).filter(Boolean);
