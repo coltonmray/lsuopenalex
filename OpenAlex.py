@@ -39,6 +39,12 @@ CACHE_MAX_AGE_HOURS = 24
 
 CURRENT_YEAR = datetime.date.today().year
 
+#Crash Reports
+import sys
+def log_exception(exc_type, exc, tb):
+    print("UNCAUGHT EXCEPTION:", exc, file=sys.stderr)
+sys.excepthook = log_exception
+
 # Colors
 LSU_PURPLE, LSU_GOLD, LSU_GOLD_D = "#461D7C", "#FDD023", "#c9a800"
 BG_COLOR, WHITE, SURFACE = "#f8f6fb", "#ffffff", "#f0ecf7"
@@ -797,25 +803,18 @@ def update_trends_chart(trends_tab, year_range):
     fig = f_fig_pub_trends(trend) if trends_tab == "oa-trends" else f_fig_publisher_trends(pub_trend, top_publishers)
     return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "320px"})
 
-# ── Server entry point (required for cPanel / Passenger) ──────────────────────
-server = app.server
+import threading
 
+if __name__ == "__main__":
+    # Start data loading in the background (non-blocking)
+    threading.Thread(
+        target=load_all_data,
+        daemon=True
+    ).start()
 
-# ── Background data loading (safe for Passenger) ──────────────────────────────
-from threading import Thread, Lock
-
-_data_lock = Lock()
-_data_started = False
-
-@server.before_first_request
-def start_background_loader():
-    """
-    Start background data loading exactly once.
-    Safe for cPanel Passenger (avoids duplicate threads).
-    """
-    global _data_started
-    with _data_lock:
-        if not _data_started:
-            _data_started = True
-            Thread(target=load_all_data, daemon=True).start()
-
+    # Run Dash as a standalone server (self-hosted)
+    app.run(
+        debug=False,
+        host="0.0.0.0",
+        port=PORT
+    )
