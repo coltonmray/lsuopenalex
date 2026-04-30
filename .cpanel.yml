@@ -2,4 +2,5 @@
 deployment:
   tasks:
     - export DEPLOYPATH=/home/lsuopena/public_html/
-    - /bin/cp -r * $DEPLOYPATH
+    - /bin/find $DEPLOYPATH -mindepth 1 ! -name '.htaccess' -delete
+    - /bin/cp -R . $DEPLOYPATH
