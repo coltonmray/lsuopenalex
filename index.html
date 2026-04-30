@@ -1750,17 +1750,27 @@ async function init() {
     minSlider.addEventListener('input', syncSliders);
     maxSlider.addEventListener('input', syncSliders);
 
-    // Build slider ticks
-    const ticksContainer = document.getElementById('slider-ticks');
-    ticksContainer.innerHTML = '';
-    
-    if (y % 2 === 0) { ... } {
-      const span = document.createElement('span');
-      const pct = (y - minYear) / (maxYear - minYear);
-      span.style.left = `${pct * 100}%`;
-      span.textContent = y;
-      ticksContainer.appendChild(span);
-    }
+// Build slider ticks
+const ticksContainer = document.getElementById('slider-ticks');
+ticksContainer.innerHTML = '';
+
+const step = 2; // change to 2 if too crowded
+
+for (let y = minYear; y <= maxYear; y += step) {
+  const span = document.createElement('span');
+
+  const pct = (y - minYear) / (maxYear - minYear);
+  span.style.left = `${pct * 100}%`;
+
+  span.textContent = y;
+
+  // optional: emphasize decade or even years
+  if (y % 2 === 0) {
+    span.style.fontWeight = '600';
+  }
+
+  ticksContainer.appendChild(span);
+}
         
     // Create funders chart (doesn't change with year filter)
     createFundersChart();
