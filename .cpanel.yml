@@ -1,8 +1,0 @@
----
-deployment:
-  tasks:
-    - export DEPLOYPATH=/home/lsuopena/repositories/openalexlsu
-    - /usr/bin/rsync -av --delete \
-      --exclude='.git/' \
-      --exclude='.env' \
-      ./ $DEPLOYPATH/
