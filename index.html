@@ -138,10 +138,16 @@
     }
     .grid-3 { 
       display: grid; 
-      grid-template-columns: 2fr 1fr 1fr; 
+      grid-template-columns: 1.6fr 1fr 1fr; /* slightly tighter proportions */
       gap: 20px; 
       margin-bottom: 24px;
       align-items: stretch;
+    }
+    
+    .grid-3 .card {
+      height: 320px; /* 🔥 FORCE equal height */
+      display: flex;
+      flex-direction: column;
     }
 
     /* Tabs */
@@ -274,7 +280,8 @@
 
     /* Charts */
     canvas { 
-      max-height: 380px !important; 
+      width: 100% !important;
+      height: 100% !important;
     }
 
     /* Tables */
@@ -400,6 +407,7 @@
     <div class="slider-wrapper">
       <span id="year-min-label" class="year-label">2020</span>
       <div class="slider-track" style="position: relative;">
+        <div class="slider-ticks" id="slider-ticks"></div>
         <input type="range" id="year-min" min="2020" max="2026" value="2020">
         <input type="range" id="year-max" min="2020" max="2026" value="2026">
       </div>
@@ -457,18 +465,18 @@
       <div class="grid-3">
         <div class="card">
           <h2 class="section-title" style="margin-bottom: 6px;">Publications per Year</h2>
-          <div style="height: 16px;"></div>
-          <canvas id="chart-year" style="height: 230px !important;"></canvas>
+          <div style="height: 8px;"></div>
+          <canvas id="chart-year"></canvas>
         </div>
         <div class="card">
           <h2 class="section-title" style="margin-bottom: 6px;">Work Types</h2>
-          <div style="height: 16px;"></div>
-          <canvas id="chart-types" style="height: 230px !important;"></canvas>
+          <div style="height: 8px;"></div>
+          <canvas id="chart-types"></canvas>
         </div>
         <div class="card">
           <h2 class="section-title" style="margin-bottom: 6px;">OA Status</h2>
-          <div style="height: 16px;"></div>
-          <canvas id="chart-oa" style="height: 230px !important;"></canvas>
+          <div style="height: 8px;"></div>
+          <canvas id="chart-oa"></canvas>
         </div>
       </div>
 
@@ -1688,7 +1696,45 @@ async function init() {
     
     minSlider.addEventListener('input', syncSliders);
     maxSlider.addEventListener('input', syncSliders);
+
+    // Build slider ticks
+    const ticksContainer = document.getElementById('slider-ticks');
+    ticksContainer.innerHTML = '';
     
+    for (let y = minYear; y <= maxYear; y++) {
+      const span = document.createElement('span');
+      const pct = (y - minYear) / (maxYear - minYear);
+      span.style.left = `${pct * 100}%`;
+      span.textContent = y;
+      ticksContainer.appendChild(span);
+    }
+
+    .slider-ticks {
+      position: absolute;
+      top: 10px;
+      left: 0;
+      right: 0;
+      height: 20px;
+      pointer-events: none;
+    }
+    
+    .slider-ticks span {
+      position: absolute;
+      transform: translateX(-50%);
+      font-size: 12px;
+      color: #7a6d96;
+      font-family: Roboto, sans-serif;
+    }
+    
+    .slider-ticks span::before {
+      content: '';
+      display: block;
+      width: 2px;
+      height: 6px;
+      background: #7a6d96;
+      margin: 0 auto 2px;
+    }
+        
     // Create funders chart (doesn't change with year filter)
     createFundersChart();
     
