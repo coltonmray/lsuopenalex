@@ -990,15 +990,19 @@ function createOAChart(works) {
 
   charts.oa = new Chart(ctx, {
     type: 'doughnut',
+
     data: {
       labels: ['Open Access', 'Closed'],
-      datasets: [{
-        data: [oaYes, oaNo],
-        backgroundColor: [COLORS.GREEN, COLORS.GRAY],
-        borderWidth: 0,
-        hoverOffset: 6
-      }]
+      datasets: [
+        {
+          data: [oaYes, oaNo],
+          backgroundColor: [COLORS.GREEN, COLORS.GRAY],
+          borderWidth: 0,
+          hoverOffset: 6
+        }
+      ]
     },
+
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -1024,11 +1028,12 @@ function createOAChart(works) {
 
         tooltip: {
           callbacks: {
-            label: function (context) {
+            label: (context) => {
               const data = context.dataset.data;
               const total = data.reduce((a, b) => a + b, 0);
               const value = context.parsed;
               const pct = total ? Math.round((value / total) * 100) : 0;
+
               return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
             }
           }
@@ -1044,6 +1049,7 @@ function createOAChart(works) {
           formatter: (value, ctx) => {
             const data = ctx.chart.data.datasets[0].data;
             const total = data.reduce((a, b) => a + b, 0);
+
             return total ? Math.round((value / total) * 100) + '%' : '0%';
           }
         }
