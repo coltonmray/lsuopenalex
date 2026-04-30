@@ -1,8 +1,8 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/lsuopena/repositories/openalexlsu
-    - /bin/rsync -a --delete \
+    - export DEPLOYPATH=/home/lsuopena/repositories/lsu-openalex
+    - /usr/bin/rsync -av --delete \
       --exclude='.git/' \
       --exclude='.env' \
       ./ $DEPLOYPATH/
