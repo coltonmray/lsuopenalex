@@ -80,6 +80,38 @@
       color: #461D7C;
     }
 
+    .tab {
+      padding: 10px 18px;
+      cursor: pointer;
+      color: #7a6d96;
+      font-size: 14px;
+      border-bottom: 3px solid transparent;
+    }
+    .tab.active {
+      color: #461D7C;
+      font-weight: 700;
+      border-bottom-color: #461D7C;
+      background: rgba(70,29,124,0.07);
+    }
+    .tab-panel { display: none; }
+    .tab-panel.active { display: block; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+    th, td {
+      padding: 8px 10px;
+      border-bottom: 1px solid #e6e2f0;
+    }
+    th {
+      text-transform: uppercase;
+      font-size: 11px;
+      color: #461D7C;
+      text-align: left;
+    }
+
     input[type="range"] {
       width: 100%;
     }
@@ -108,34 +140,134 @@
       Loading data from OpenAlex…
     </div>
 
-    <div id="dashboard" style="display:none">
-      <div class="stats">
-        <div class="stat">
-          <div class="stat-label">Works</div>
-          <div id="statWorks" class="stat-value"></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Total Citations</div>
-          <div id="statCitations" class="stat-value"></div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Open Access</div>
-          <div id="statOA" class="stat-value"></div>
-        </div>
-      </div>
-
-      <div class="charts">
-        <div class="card">
-          <h3>Publications per Year</h3>
-          <canvas id="chartYear"></canvas>
-        </div>
-        <div class="card">
-          <h3>OA Status</h3>
-          <canvas id="chartOA"></canvas>
-        </div>
-      </div>
+    <div class="tabs" style="display:flex; border-bottom:1px solid #ddd5ee; margin-bottom:16px">
+      <div class="tab active" onclick="showTab('overview', this)">Overview</div>
+      <div class="tab" onclick="showTab('recent', this)">Recent Publications</div>
+      <div class="tab" onclick="showTab('cited', this)">Top Cited</div>
+      <div class="tab" onclick="showTab('authors', this)">Authors &amp; Topics</div>
     </div>
-  </div>
+    
+
+    <div id="dashboard" style="display:none">
+
+      <!-- ================= OVERVIEW TAB ================= -->
+      <div id="tab-overview" class="tab-panel active">
+    
+        <div class="stats">
+          <div class="stat">
+            <div class="stat-label">Works</div>
+            <div id="statWorks" class="stat-value"></div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Total Citations</div>
+            <div id="statCitations" class="stat-value"></div>
+          </div>
+          <div class="stat">
+            <div class="stat-label">Open Access</div>
+            <div id="statOA" class="stat-value"></div>
+          </div>
+        </div>
+    
+        <div class="charts">
+          <div class="card">
+            <h3>Publications per Year</h3>
+            <canvas id="chartYear"></canvas>
+          </div>
+          <div class="card">
+            <h3>OA Status</h3>
+            <canvas id="chartOA"></canvas>
+          </div>
+        </div>
+    
+        <div class="charts" style="margin-top:24px">
+          <div class="card">
+            <h3>Estimated APCs by Year</h3>
+            <canvas id="chartAPC"></canvas>
+          </div>
+          <div class="card">
+            <h3>Work Types</h3>
+            <canvas id="chartTypes"></canvas>
+          </div>
+        </div>
+    
+        <div class="charts" style="margin-top:24px">
+          <div class="card">
+            <h3>Top Journals</h3>
+            <canvas id="chartJournals"></canvas>
+          </div>
+          <div class="card">
+            <h3>Top Funders</h3>
+            <canvas id="chartFunders"></canvas>
+          </div>
+        </div>
+    
+      </div>
+      <!-- =============== END OVERVIEW TAB =============== -->
+    
+    
+      <!-- ================= RECENT TAB ================= -->
+      <div id="tab-recent" class="tab-panel">
+        <div class="card">
+          <h3>Recent Publications</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Type</th>
+                <th>Status</th>
+                <th>Date</th>
+                <th>APC</th>
+              </tr>
+            </thead>
+            <tbody id="recent-body"></tbody>
+          </table>
+        </div>
+      </div>
+    
+      <!-- ================= TOP CITED TAB ================= -->
+      <div id="tab-cited" class="tab-panel">
+        <div class="card">
+          <h3>Top 25 Most Cited Works</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Year</th>
+                <th>Citations</th>
+              </tr>
+            </thead>
+            <tbody id="cited-body"></tbody>
+          </table>
+        </div>
+      </div>
+    
+      <!-- ================= AUTHORS & TOPICS TAB ================= -->
+      <div id="tab-authors" class="tab-panel">
+        <div class="charts">
+          <div class="card">
+            <h3>Top Authors</h3>
+            <table>
+              <thead>
+                <tr><th>#</th><th>Name</th><th>Works</th></tr>
+              </thead>
+              <tbody id="authors-body"></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <h3>Top Topics</h3>
+            <table>
+              <thead>
+                <tr><th>#</th><th>Topic</th><th>Works</th></tr>
+              </thead>
+              <tbody id="topics-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    
+    </div>
+     
 
 <script>
 const ROR_ID = "05ect4e57";
@@ -143,7 +275,15 @@ const BASE_URL = "https://api.openalex.org";
 const START_YEAR = 2020;
 
 let allWorks = [];
+let apcChart, typeChart, journalChart, funderChart;
 let yearChart, oaChart;
+
+function showTab(name, el) {
+  document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+  document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+  document.getElementById(`tab-${name}`).classList.add("active");
+  el.classList.add("active");
+}
 
 // Fetch works
 async function fetchWorks() {
@@ -151,7 +291,7 @@ async function fetchWorks() {
   let results = [];
 
   while (true) {
-    const url = `${BASE_URL}/works?filter=institutions.ror:${ROR_ID},from_publication_date:${START_YEAR}-01-01&per-page=200&cursor=${cursor}&select=publication_year,cited_by_count,open_access`;
+    const url = `${BASE_URL}/works?filter=institutions.ror:${ROR_ID},from_publication_date:${START_YEAR}-01-01&;per-page=200&cursor=${cursor}&select=publication_year,cited_by_count,open_access,apc_list,type,primary_location,publication_date,authorships,primary_topic,id,title`;
     const res = await fetch(url);
     const data = await res.json();
 
@@ -184,6 +324,7 @@ function filterWorks() {
 
   updateStats(f);
   updateCharts(f);
+  updateTables(f);
 }
 
 function updateStats(f) {
@@ -216,6 +357,114 @@ function updateCharts(f) {
       }]
     }
   });
+  /* ---------- APCs by Year ---------- */
+const apcByYear = {};
+f.forEach(w => {
+  if (!w.apc_list?.value_usd || !w.publication_year) return;
+  apcByYear[w.publication_year] =
+    (apcByYear[w.publication_year] || 0) + w.apc_list.value_usd;
+});
+
+const apcYears = Object.keys(apcByYear).sort();
+apcChart?.destroy();
+apcChart = new Chart(chartAPC, {
+  type: "bar",
+  data: {
+    labels: apcYears,
+    datasets: [{
+      data: apcYears.map(y => apcByYear[y]),
+      backgroundColor: "#6aaa5e"
+    }]
+  },
+
+    options: {
+    scales: {
+      y: {
+        ticks: {
+          callback: v => "$" + Math.round(v / 1000) + "K"
+        }
+      }
+    }
+  }
+});
+
+/* ---------- Work Types ---------- */
+const typeCounts = {};
+f.forEach(w => {
+  if (!w.type) return;
+  typeCounts[w.type] = (typeCounts[w.type] || 0) + 1;
+});
+
+const types = Object.entries(typeCounts)
+  .sort((a,b) => b[1]-a[1])
+  .slice(0,6);
+
+typeChart?.destroy();
+typeChart = new Chart(chartTypes, {
+  type: "doughnut",
+  data: {
+    labels: types.map(t => t[0]),
+    datasets: [{
+      data: types.map(t => t[1]),
+      backgroundColor: [
+        "#461D7C","#FDD023","#16a34a","#7c3aed","#f97316","#a6a6a6"
+      ]
+    }]
+  }
+});
+
+/* ---------- Top Journals ---------- */
+const journalCounts = {};
+f.forEach(w => {
+  const journal = w.primary_location?.source?.display_name;
+  if (!journal) return;
+  journalCounts[journal] = (journalCounts[journal] || 0) + 1;
+});
+
+const journals = Object.entries(journalCounts)
+  .sort((a,b) => b[1]-a[1])
+  .slice(0,10);
+
+journalChart?.destroy();
+journalChart = new Chart(chartJournals, {
+  type: "bar",
+  data: {
+    labels: journals.map(j =>
+      j[0].length > 45 ? j[0].slice(0,45) + "…" : j[0]
+    ),
+    datasets: [{
+      data: journals.map(j => j[1]),
+      backgroundColor: "#c9a800"
+    }]
+  },
+  options: { indexAxis: "y" }
+});
+
+/* ---------- Funders ---------- */
+fetch(`${BASE_URL}/works?filter=institutions.ror:${ROR_ID}&group-by=funders.id&per-page=10`)
+  .then(r => r.json())
+  .then(data => {
+    const funders = (data.group_by || []).map(g => ({
+      name: g.key_display_name || g.key,
+      count: g.count
+    }));
+
+    funderChart?.destroy();
+    funderChart = new Chart(chartFunders, {
+      type: "bar",
+      data: {
+        labels: funders.map(f =>
+          f.name.length > 40 ? f.name.slice(0,40) + "…" : f.name
+        ),
+        datasets: [{
+          data: funders.map(f => f.count),
+          backgroundColor: "#461D7C"
+        }]
+      },
+      options: { indexAxis: "y" }
+    });
+  });
+
 
   // OA status
   const oaYes = f.filter(w => w.open_access?.is_oa).length;
@@ -232,6 +481,58 @@ function updateCharts(f) {
       }]
     }
   });
+}
+
+function updateTables(f) {
+  /* Recent publications */
+  const recent = [...f]
+    .sort((a,b) => (b.publication_date || "").localeCompare(a.publication_date || ""))
+    .slice(0, 50);
+
+  recentBody.innerHTML = recent.map(w => `
+    <tr>
+      <td>${w.id}${w.title || "Untitled"}</a></td>
+      <td>${w.type || ""}</td>
+      <td>${w.open_access?.oa_status || "unknown"}</td>
+      <td>${w.publication_date || ""}</td>
+      <td>${w.apc_list?.value_usd ? "$"+Math.round(w.apc_list.value_usd).toLocaleString() : "—"}</td>
+    </tr>
+  `).join("");
+
+  /* Top cited */
+  const cited = [...f].sort((a,b)=>b.cited_by_count-a.cited_by_count).slice(0,25);
+  citedBody.innerHTML = cited.map((w,i)=>`
+    <tr>
+      <td>${i+1}</td>
+      <td>${w.id}="_blank">${w.title || "Untitled"}</a></td>
+      <td>${w.publication_year || ""}</td>
+      <td>${(w.cited_by_count||0).toLocaleString()}</td>
+    </tr>
+  `).join("");
+
+  /* Authors */
+  const authorCounts = {};
+  f.forEach(w=>{
+    (w.authorships||[]).forEach(a=>{
+      const name = a.author?.display_name;
+      if (name) authorCounts[name]=(authorCounts[name]||0)+1;
+    });
+  });
+  const topAuthors = Object.entries(authorCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  authorsBody.innerHTML = topAuthors.map((a,i)=>`
+    <tr><td>${i+1}</td><td>${a[0]}</td><td>${a[1]}</td></tr>
+  `).join("");
+
+  /* Topics */
+  const topicCounts = {};
+  f.forEach(w=>{
+    const t = w.primary_topic?.display_name;
+    if (t) topicCounts[t]=(topicCounts[t]||0)+1;
+  });
+  const topTopics = Object.entries(topicCounts).sort((a,b)=>b[1]-a[1]).slice(0,10);
+  topicsBody.innerHTML = topTopics.map((t,i)=>`
+    <tr><td>${i+1}</td><td>${t[0]}</td><td>${t[1]}</td></tr>
+  `).join("");
 }
 
 // Boot
