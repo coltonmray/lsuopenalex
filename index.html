@@ -244,6 +244,32 @@
       text-align: center;
     }
 
+    .slider-ticks {
+      position: absolute;
+      top: 10px;
+      left: 0;
+      right: 0;
+      height: 20px;
+      pointer-events: none;
+    }
+    
+    .slider-ticks span {
+      position: absolute;
+      transform: translateX(-50%);
+      font-size: 12px;
+      color: #7a6d96;
+      font-family: Roboto, sans-serif;
+    }
+    
+    .slider-ticks span::before {
+      content: '';
+      display: block;
+      width: 2px;
+      height: 6px;
+      background: #7a6d96;
+      margin: 0 auto 2px;
+    }
+    
     /* Loading */
     .loading { 
       text-align: center; 
@@ -1665,11 +1691,7 @@ async function init() {
     // Try instant cache render FIRST
     const cached = await loadCache();
     if (cached && cached.length) {
-      allWorks = cached;
-      updateDashboard();
-      document.getElementById('loading').style.display = 'none';
-      document.getElementById('dashboard').style.display = 'block';
-    }
+      allWorks = cached;}
 
     // Fetch fresh data in background
     [allWorks, fundersData] = await Promise.all([
@@ -1707,32 +1729,6 @@ async function init() {
       span.style.left = `${pct * 100}%`;
       span.textContent = y;
       ticksContainer.appendChild(span);
-    }
-
-    .slider-ticks {
-      position: absolute;
-      top: 10px;
-      left: 0;
-      right: 0;
-      height: 20px;
-      pointer-events: none;
-    }
-    
-    .slider-ticks span {
-      position: absolute;
-      transform: translateX(-50%);
-      font-size: 12px;
-      color: #7a6d96;
-      font-family: Roboto, sans-serif;
-    }
-    
-    .slider-ticks span::before {
-      content: '';
-      display: block;
-      width: 2px;
-      height: 6px;
-      background: #7a6d96;
-      margin: 0 auto 2px;
     }
         
     // Create funders chart (doesn't change with year filter)
