@@ -598,31 +598,65 @@ let allWorks = [];
 let fundersData = [];
 let charts = {};
 
+
+
+/* ================= IndexedDB Cache ================= */
+
+const DB_NAME = "lsu_openalex_cache";
+const DB_VERSION = 1;
+const STORE_NAME = "works";
+
+function openDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onerror = () => reject(req.error);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(STORE_NAME);
+    };
+    req.onsuccess = () => resolve(req.result);
+  });
+}
+
+async function idbSet(key, value) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  tx.objectStore(STORE_NAME).put(value, key);
+  return tx.complete;
+}
+
+async function idbGet(key) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readonly");
+  return new Promise(resolve => {
+    const req = tx.objectStore(STORE_NAME).get(key);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror = () => resolve(null);
+  });
+}
+
+async function idbClear() {
+  const db = await openDB();
+  const tx = db.transaction(STORE_NAME, "readwrite");
+  tx.objectStore(STORE_NAME).clear();
+}
+  
 // ═══════════════════════════════════════════════════════════════════════════
 // Cache Management
 // ═══════════════════════════════════════════════════════════════════════════
 
-function isCacheFresh() {
-  const ts = localStorage.getItem(CONFIG.CACHE_TIME_KEY);
+async function isCacheFresh() {
+  const ts = await idbGet("cache_time");
   if (!ts) return false;
-  const ageMs = Date.now() - Number(ts);
-  const ageHours = ageMs / (1000 * 60 * 60);
-  return ageHours < CONFIG.CACHE_MAX_AGE_HOURS;
+  return (Date.now() - ts) / 36e5 < CONFIG.CACHE_MAX_AGE_HOURS;
 }
 
-function loadFromCache() {
-  const raw = localStorage.getItem(CONFIG.CACHE_KEY);
-  if (!raw) return null;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+async function loadCache() {
+  return await idbGet("works");
 }
 
-function saveToCache(data) {
-  localStorage.setItem(CONFIG.CACHE_KEY, JSON.stringify(data));
-  localStorage.setItem(CONFIG.CACHE_TIME_KEY, Date.now().toString());
+async function saveCache(data) {
+  await idbSet("works", data);
+  await idbSet("cache_time", Date.now());
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -631,10 +665,10 @@ function saveToCache(data) {
 
 async function fetchWorks() {
   // Try cache first
-  if (isCacheFresh()) {
-    const cached = loadFromCache();
-    if (cached && Array.isArray(cached) && cached.length) {
-      console.log("Loaded works from cache:", cached.length);
+  if (await isCacheFresh()) {
+    const cached = await loadCache();
+    if (cached && cached.length) {
+      console.log("Loaded works from IndexedDB:", cached.length);
       return cached;
     }
   }
@@ -696,7 +730,7 @@ async function fetchWorks() {
   }
 
   console.log("Fetched works:", results.length);
-  saveToCache(results);
+  await saveCache(results);
   return results;
 }
 
