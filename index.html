@@ -594,6 +594,9 @@
 <script>
 
 Chart.register(ChartDataLabels);
+Chart.defaults.plugins.datalabels = {
+  display: false
+};
   
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -996,21 +999,46 @@ function createOAChart(works) {
         data: [oaYes, oaNo],
         backgroundColor: [COLORS.GREEN, COLORS.GRAY],
         borderWidth: 0,
+        hoverOffset: 6
       }]
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
+
+      layout: {
+        padding: 10
+      },
+
       plugins: {
         legend: {
           position: 'bottom',
           labels: {
-            font: { family: 'Roboto, sans-serif', size: 12 },
+            font: {
+              family: 'Roboto, sans-serif',
+              size: 12
+            },
             color: '#7a6d96',
-            padding: 15,
+            padding: 14,
+            boxWidth: 12,
+            boxHeight: 12
           }
         },
+
+        tooltip: {
+          callbacks: {
+            label: function (context) {
+              const data = context.dataset.data;
+              const total = data.reduce((a, b) => a + b, 0);
+              const value = context.parsed;
+              const pct = total ? Math.round((value / total) * 100) : 0;
+              return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
+            }
+          }
+        },
+
         datalabels: {
+          display: true,
           color: '#ffffff',
           font: {
             weight: 'bold',
@@ -1019,25 +1047,14 @@ function createOAChart(works) {
           formatter: (value, ctx) => {
             const data = ctx.chart.data.datasets[0].data;
             const total = data.reduce((a, b) => a + b, 0);
-            const pct = total ? (value / total * 100) : 0;
-            return pct.toFixed(0) + '%';
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const value = context.parsed;
-              const total = context.dataset.data.reduce((a, b) => a + b, 0);
-              const pct = total ? Math.round(value / total * 100) : 0;
-              return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
-            }
+            return total ? Math.round((value / total) * 100) + '%' : '0%';
           }
         }
       }
-    },
-    plugins: [ChartDataLabels]
+    }
   });
 }
+  
 function createTypesChart(works) {
   destroyChart('types');
 
@@ -1077,15 +1094,25 @@ function createTypesChart(works) {
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          position: 'bottom'
+          position: 'bottom',
+          labels: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+            padding: 8,
+          }
         },
         datalabels: {
+          display: true,
           color: '#fff',
-          font: { weight: 'bold', size: 12 }
+          font: { weight: 'bold', size: 12 },
+          formatter: (value, ctx) => {
+            const data = ctx.chart.data.datasets[0].data;
+            const total = data.reduce((a,b) => a + b, 0);
+            return Math.round((value / total) * 100) + '%';
+          }
         }
       }
-    },
-    plugins: [ChartDataLabels]
+    }
   });
 }
 
@@ -1740,8 +1767,11 @@ const step = 2; // change to 2 if too crowded
 for (let y = minYear; y <= maxYear; y += step) {
   const span = document.createElement('span');
 
-  const pct = (y - minYear) / (maxYear - minYear);
+
+  const range = maxYear - minYear || 1;
+  const pct = (y - minYear) / range;
   span.style.left = `${pct * 100}%`;
+
 
   span.textContent = y;
 
@@ -1754,7 +1784,10 @@ for (let y = minYear; y <= maxYear; y += step) {
 }
         
     // Create funders chart (doesn't change with year filter)
+  if (fundersData && fundersData.length) {
     createFundersChart();
+  }
+
     
     // Initial dashboard update
     updateDashboard();
