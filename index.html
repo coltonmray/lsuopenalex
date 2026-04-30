@@ -291,7 +291,7 @@ async function fetchWorks() {
   let results = [];
 
   while (true) {
-    const url = `${BASE_URL}/works?filter=institutions.ror:${ROR_ID},from_publication_date:${START_YEAR}-01-01&;per-page=200&cursor=${cursor}&select=publication_year,cited_by_count,open_access,apc_list,type,primary_location,publication_date,authorships,primary_topic,id,title`;
+    const url = `${BASE_URL}/works?filter=institutions.ror:${ROR_ID},from_publication_date:${START_YEAR}-01-01&per-page=200&cursor=${cursor}&select=publication_year,cited_by_count,open_access,apc_list,type,primary_location,publication_date,authorships,primary_topic,id,title`;
     const res = await fetch(url);
     const data = await res.json();
 
