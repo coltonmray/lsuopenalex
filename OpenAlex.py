@@ -797,6 +797,16 @@ def update_trends_chart(trends_tab, year_range):
     fig = f_fig_pub_trends(trend) if trends_tab == "oa-trends" else f_fig_publisher_trends(pub_trend, top_publishers)
     return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "320px"})
 
+import threading
+
+def start_data_loader():
+    try:
+        load_all_data()
+    except Exception as e:
+        print(f"Data load failed: {e}")
+
+# start data loading in background (non-blocking)
+threading.Thread(target=start_data_loader, daemon=True).start()
+
 if __name__ == "__main__":
-    load_all_data()
     app.run(debug=False, host="0.0.0.0", port=PORT)
