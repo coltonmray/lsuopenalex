@@ -135,6 +135,10 @@
         <input type="range" id="yearMax" />
       </div>
     </div>
+    
+      <button onclick="clearCache()" style="margin-left:12px">
+        Refresh Data
+      </button>
 
     <div id="loading" class="loading">
       Loading data from OpenAlex…
@@ -273,6 +277,35 @@
 const ROR_ID = "05ect4e57";
 const BASE_URL = "https://api.openalex.org";
 const START_YEAR = 2020;
+const MAILTO = "lsulibrary@lsu.edu";
+
+const CACHE_KEY = "openalex_works_cache";
+const CACHE_TIME_KEY = "openalex_works_cache_time";
+const CACHE_MAX_AGE_HOURS = 24;
+
+function isCacheFresh() {
+  const ts = localStorage.getItem(CACHE_TIME_KEY);
+  if (!ts) return false;
+
+  const ageMs = Date.now() - Number(ts);
+  const ageHours = ageMs / (1000 * 60 * 60);
+  return ageHours < CACHE_MAX_AGE_HOURS;
+}
+
+function loadFromCache() {
+  const raw = localStorage.getItem(CACHE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function saveToCache(data) {
+  localStorage.setItem(CACHE_KEY, JSON.stringify(data));
+  localStorage.setItem(CACHE_TIME_KEY, Date.now().toString());
+}
 
 let allWorks = [];
 let apcChart, typeChart, journalChart, funderChart;
@@ -287,18 +320,38 @@ function showTab(name, el) {
 
 // Fetch works
 async function fetchWorks() {
+  // Try cache first
+  if (isCacheFresh()) {
+    const cached = loadFromCache();
+    if (cached && Array.isArray(cached) && cached.length) {
+      console.log("Loaded works from cache:", cached.length);
+      return cached;
+    }
+  }
+
+  console.log("Fetching works from OpenAlex…");
+
   let cursor = "*";
   let results = [];
 
   while (true) {
-    const url = `${BASE_URL}/works?filter=institutions.ror:${ROR_ID},from_publication_date:${START_YEAR}-01-01&per-page=200&cursor=${cursor}&select=publication_year,cited_by_count,open_access,apc_list,type,primary_location,publication_date,authorships,primary_topic,id,title`;
-    const res = await fetch(url);
-    const data = await res.json();
+    const url = `${BASE_URL}/works?filter=institutions.ror:${ROR_ID},from_publication_date:${START_YEAR}-01-01&per-page=200&cursor=${cursor}&select=publication_year,cited_by_count,open_access,apc_list,type,primary_location,publication_date,authorships,primary_topic,id,title&mailto=${MAILTO}`;
 
+    const res = await fetch(url);
+    if (!res.ok) throw new Error("OpenAlex request failed");
+
+    const data = await res.json();
     results.push(...data.results);
-    cursor = data.meta.next_cursor;
+
+    cursor = data.meta?.next_cursor;
     if (!cursor || data.results.length === 0) break;
   }
+
+  console.log("Fetched works:", results.length);
+
+  // ✅ Save to cache
+  saveToCache(results);
+
   return results;
 }
 
@@ -311,6 +364,12 @@ function initSliders(min, max) {
   yearMax.value = max;
   yearMinLabel.textContent = min;
   yearMaxLabel.textContent = max;
+}
+
+function clearCache() {
+  localStorage.removeItem(CACHE_KEY);
+  localStorage.removeItem(CACHE_TIME_KEY);
+  location.reload();
 }
 
 function filterWorks() {
@@ -441,7 +500,7 @@ journalChart = new Chart(chartJournals, {
 });
 
 /* ---------- Funders ---------- */
-fetch(`${BASE_URL}/works?filter=institutions.ror:${ROR_ID}&group-by=funders.id&per-page=10`)
+fetch(`${BASE_URL}/works?filter=institutions.ror:${ROR_ID}&group-by=funders.id&per-page=10&mailto=${MAILTO}`)
   .then(r => r.json())
   .then(data => {
     const funders = (data.group_by || []).map(g => ({
@@ -491,7 +550,7 @@ function updateTables(f) {
 
   recentBody.innerHTML = recent.map(w => `
     <tr>
-      <td>${w.id}${w.title || "Untitled"}</a></td>
+      <td><a href="${w.ide || "Untitled"}</a></td>
       <td>${w.type || ""}</td>
       <td>${w.open_access?.oa_status || "unknown"}</td>
       <td>${w.publication_date || ""}</td>
