@@ -797,16 +797,25 @@ def update_trends_chart(trends_tab, year_range):
     fig = f_fig_pub_trends(trend) if trends_tab == "oa-trends" else f_fig_publisher_trends(pub_trend, top_publishers)
     return dcc.Graph(figure=fig, config={"displayModeBar": False}, style={"height": "320px"})
 
-import threading
+# ── Server entry point (required for cPanel / Passenger) ──────────────────────
+server = app.server
 
-def start_data_loader():
-    try:
-        load_all_data()
-    except Exception as e:
-        print(f"Data load failed: {e}")
 
-# start data loading in background (non-blocking)
-threading.Thread(target=start_data_loader, daemon=True).start()
+# ── Background data loading (safe for Passenger) ──────────────────────────────
+from threading import Thread, Lock
 
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=PORT)
+_data_lock = Lock()
+_data_started = False
+
+@server.before_first_request
+def start_background_loader():
+    """
+    Start background data loading exactly once.
+    Safe for cPanel Passenger (avoids duplicate threads).
+    """
+    global _data_started
+    with _data_lock:
+        if not _data_started:
+            _data_started = True
+            Thread(target=load_all_data, daemon=True).start()
+
