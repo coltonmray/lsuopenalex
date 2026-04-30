@@ -714,73 +714,73 @@ async function saveCache(data) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function fetchWorks() {
-  console.log("Fetching works from OpenAlex...");
-  // Try cache first
-  if (await isCacheFresh()) {
-    const cached = await loadCache();
-    if (cached && cached.length) {
-      console.log("Loaded works from IndexedDB:", cached.length);
-      return cached;
-    }
-  }
+  console.log("Fetching works from OpenAlex…");
 
-  console.log("Fetching works from OpenAlex...");
-  
-  const filterString = `institutions.ror:${CONFIG.ROR_ID},from_publication_date:${CONFIG.START_YEAR}-01-01,to_publication_date:${CONFIG.CURRENT_YEAR}-12-31`;
-  const fields = "id,title,publication_year,cited_by_count,primary_location,open_access,type,doi,apc_list,apc_paid,publication_date,authorships,primary_topic";
-  
+  const filterString =
+    `institutions.ror:${CONFIG.ROR_ID},` +
+    `from_publication_date:${CONFIG.START_YEAR}-01-01,` +
+    `to_publication_date:${CONFIG.CURRENT_YEAR}-12-31`;
+
+  const fields =
+    "id,title,publication_year,cited_by_count,primary_location," +
+    "open_access,type,doi,apc_list,apc_paid,publication_date," +
+    "authorships,primary_topic";
+
   let cursor = "*";
   let results = [];
-  let totalCount = 0;
 
   while (true) {
     const params = new URLSearchParams({
       filter: filterString,
       "per-page": 200,
-      cursor: cursor,
+      cursor,
       select: fields,
       sort: "publication_year:desc",
       mailto: CONFIG.MAILTO,
     });
 
     const url = `${CONFIG.BASE_URL}/works?${params}`;
-    
+
     let data = null;
+
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const res = await fetch(url);
+
         if (!res.ok) {
           if (res.status >= 500) {
-            console.log("OpenAlex 500 error, retrying...");
-            await new Promise(resolve => setTimeout(resolve, 1500));
+            console.warn("OpenAlex 5xx error, retrying…");
+            await new Promise(r => setTimeout(r, 1500));
             continue;
           }
           throw new Error(`HTTP ${res.status}`);
         }
+
         data = await res.json();
         break;
-      } catch (e) {
-        console.error("Fetch error:", e);
-        if (attempt === 4) throw e;
-        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (err) {
+        console.error("Fetch error:", err);
+        if (attempt === 4) throw err;
+        await new Promise(r => setTimeout(r, 1000));
       }
     }
 
-    if (!data) break;
+    if (!data || !data.results?.length) break;
 
-    const batch = data.results || [];
-    results.push(...batch);
-    totalCount = data.meta?.count || 0;
-    
-    console.log(`Fetched ${results.length}/${totalCount} works...`);
+    results.push(...data.results);
+
+    console.log(
+      `Fetched ${results.length} / ${data.meta?.count ?? "?"} works…`
+    );
 
     cursor = data.meta?.next_cursor;
-    if (!batch.length || !cursor || cursor === "*") break;
-    
-    await new Promise(resolve => setTimeout(resolve, 120));
+    if (!cursor || cursor === "*") break;
+
+    await new Promise(r => setTimeout(r, 120)); // gentle rate limiting
   }
 
-  console.log("Fetched works:", results.length);
+  console.log("Fetch complete — saving to cache:", results.length);
+
   await saveCache(results);
   return results;
 }
@@ -1040,10 +1040,10 @@ function createOAChart(works) {
 }
 function createTypesChart(works) {
   destroyChart('types');
-  
+
   const KEEP = new Set(['article', 'preprint', 'book-chapter']);
   const typeCounts = {};
-  
+
   works.forEach(w => {
     if (!w.type) return;
     const typeGrouped = KEEP.has(w.type) ? w.type : 'other';
@@ -1053,23 +1053,22 @@ function createTypesChart(works) {
   const sorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
   const labels = sorted.map(t => t[0]);
   const data = sorted.map(t => t[1]);
-  
-  const colorMap = {
-    'article': COLORS.LSU_PURPLE,
-    'preprint': COLORS.LSU_GOLD,
-    'book-chapter': COLORS.GREEN,
-    'other': COLORS.GRAY,
-  };
-  const colors = labels.map(l => colorMap[l] || COLORS.GRAY);
 
   const ctx = document.getElementById('chart-types');
   charts.types = new Chart(ctx, {
     type: 'doughnut',
     data: {
-      labels: labels,
+      labels,
       datasets: [{
-        data: data,
-        backgroundColor: colors,
+        data,
+        backgroundColor: labels.map(l =>
+          ({
+            article: COLORS.LSU_PURPLE,
+            preprint: COLORS.LSU_GOLD,
+            'book-chapter': COLORS.GREEN,
+            other: COLORS.GRAY
+          })[l] || COLORS.GRAY
+        ),
         borderWidth: 0,
       }]
     },
@@ -1078,35 +1077,17 @@ function createTypesChart(works) {
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          position: 'bottom',
-          labels: {
-            font: { family: 'Roboto, sans-serif', size: 12 },
-            color: '#7a6d96',
-            padding: 8,
-          }
-        },
-        tooltip: {
-          callbacks: {
-            label: function(context) {
-              const value = context.parsed;
-              const total = context.dataset.data.reduce((a, b) => a + b, 0);
-              const pct = Math.round(value / total * 100);
-              return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
-            }
-          }
+          position: 'bottom'
         },
         datalabels: {
           color: '#fff',
-          font: { weight: 'bold', size: 12 },
-          formatter: (value, ctx) => {
-            const data = ctx.chart.data.datasets[0].data;
-            const total = data.reduce((a, b) => a + b, 0);
-            const pct = total ? (value / total * 100) : 0;
-            return pct.toFixed(0) + '%';
-          }
+          font: { weight: 'bold', size: 12 }
         }
       }
-      plugins: [ChartDataLabels]
+    },
+    plugins: [ChartDataLabels]
+  });
+}
 
 function createAPCChart(works) {
   destroyChart('apc');
