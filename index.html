@@ -7,6 +7,9 @@
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <!-- Percentages -->
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   
   <!-- DataTables -->
   <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
@@ -240,28 +243,31 @@
 
     .slider-ticks {
       position: absolute;
-      top: 10px;
+      top: 6px;
       left: 0;
       right: 0;
-      height: 20px;
+      height: 24px;
       pointer-events: none;
     }
     
     .slider-ticks span {
       position: absolute;
       transform: translateX(-50%);
-      font-size: 12px;
+      font-size: 11px;
       color: #7a6d96;
       font-family: Roboto, sans-serif;
+      text-align: center;
+      white-space: nowrap;
     }
     
     .slider-ticks span::before {
       content: '';
       display: block;
-      width: 2px;
-      height: 6px;
+      width: 1px;
+      height: 8px;
       background: #7a6d96;
-      margin: 0 auto 2px;
+      margin: 0 auto 3px;
+      opacity: 0.7;
     }
     
     /* Loading */
@@ -586,6 +592,9 @@
 </div>
 
 <script>
+
+Chart.register(ChartDataLabels);
+  
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
 // ═══════════════════════════════════════════════════════════════════════════
@@ -685,6 +694,12 @@ async function isCacheFresh() {
   return (Date.now() - ts) / 36e5 < CONFIG.CACHE_MAX_AGE_HOURS;
 }
 
+async function getCacheAgeHours() {
+  const ts = await idbGet("cache_time");
+  if (!ts) return null;
+  return (Date.now() - ts) / 36e5;
+}
+
 async function loadCache() {
   return await idbGet("works");
 }
@@ -699,6 +714,7 @@ async function saveCache(data) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function fetchWorks() {
+  console.log("Fetching works from OpenAlex...");
   // Try cache first
   if (await isCacheFresh()) {
     const cached = await loadCache();
@@ -925,7 +941,7 @@ function createPublicationsPerYearChart(works) {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { enabled: false },
+        tooltip: { enabled: true },
       },
       scales: {
         x: {
@@ -966,11 +982,12 @@ function createPublicationsPerYearChart(works) {
 
 function createOAChart(works) {
   destroyChart('oa');
-  
+
   const oaYes = works.filter(w => w.open_access?.is_oa).length;
   const oaNo = works.length - oaYes;
 
   const ctx = document.getElementById('chart-oa');
+
   charts.oa = new Chart(ctx, {
     type: 'doughnut',
     data: {
@@ -993,22 +1010,34 @@ function createOAChart(works) {
             padding: 15,
           }
         },
+        datalabels: {
+          color: '#ffffff',
+          font: {
+            weight: 'bold',
+            size: 12
+          },
+          formatter: (value, ctx) => {
+            const data = ctx.chart.data.datasets[0].data;
+            const total = data.reduce((a, b) => a + b, 0);
+            const pct = total ? (value / total * 100) : 0;
+            return pct.toFixed(0) + '%';
+          }
+        },
         tooltip: {
           callbacks: {
             label: function(context) {
-              const label = context.label || '';
               const value = context.parsed;
               const total = context.dataset.data.reduce((a, b) => a + b, 0);
-              const pct = Math.round(value / total * 100);
-              return `${label}: ${value.toLocaleString()} (${pct}%)`;
+              const pct = total ? Math.round(value / total * 100) : 0;
+              return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
             }
           }
         }
       }
-    }
+    },
+    plugins: [ChartDataLabels]
   });
 }
-
 function createTypesChart(works) {
   destroyChart('types');
   
@@ -1059,18 +1088,25 @@ function createTypesChart(works) {
         tooltip: {
           callbacks: {
             label: function(context) {
-              const label = context.label || '';
               const value = context.parsed;
               const total = context.dataset.data.reduce((a, b) => a + b, 0);
               const pct = Math.round(value / total * 100);
-              return `${label}: ${value.toLocaleString()} (${pct}%)`;
+              return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
             }
+          }
+        },
+        datalabels: {
+          color: '#fff',
+          font: { weight: 'bold', size: 12 },
+          formatter: (value, ctx) => {
+            const data = ctx.chart.data.datasets[0].data;
+            const total = data.reduce((a, b) => a + b, 0);
+            const pct = total ? (value / total * 100) : 0;
+            return pct.toFixed(0) + '%';
           }
         }
       }
-    }
-  });
-}
+      plugins: [ChartDataLabels]
 
 function createAPCChart(works) {
   destroyChart('apc');
@@ -1240,7 +1276,7 @@ function createFundersChart() {
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { enabled: false },
+        tooltip: { enabled: true },
       },
       scales: {
         x: {
@@ -1681,16 +1717,18 @@ function syncSliders() {
 
 async function init() {
   try {
-    // Try instant cache render FIRST
-    const cached = await loadCache();
-    if (cached && cached.length) {
-      allWorks = cached;}
+    const cachedWorks = await loadCache();
+    const cacheFresh = await isCacheFresh();
 
-    // Fetch fresh data in background
-    [allWorks, fundersData] = await Promise.all([
-      fetchWorks(),
-      fetchFunders()
-    ]);
+    if (cacheFresh && cachedWorks && cachedWorks.length) {
+      console.log("Using cached OpenAlex data");
+      allWorks = cachedWorks;
+      fundersData = await fetchFunders(); // optional — small & cheap
+    } else {
+      console.log("Cache missing or expired — fetching OpenAlex");
+      allWorks = await fetchWorks();       // this saves cache
+      fundersData = await fetchFunders();
+    }
     
     // Find year range
     const years = allWorks.map(w => w.publication_year).filter(Boolean);
@@ -1716,7 +1754,7 @@ async function init() {
     const ticksContainer = document.getElementById('slider-ticks');
     ticksContainer.innerHTML = '';
     
-    for (let y = minYear; y <= maxYear; y++) {
+    if (y % 2 === 0) { ... } {
       const span = document.createElement('span');
       const pct = (y - minYear) / (maxYear - minYear);
       span.style.left = `${pct * 100}%`;
