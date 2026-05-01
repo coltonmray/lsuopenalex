@@ -7,7 +7,14 @@
 
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+
+  <!-- Percentages -->
   <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
+  
+  <!-- DataTables -->
+  <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.min.css">
+  <script src="https://code.jquery.com/jquery-3.7.0.min.js"></script>
+  <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.min.js"></script>
 
   <!-- Google Fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
@@ -38,7 +45,6 @@
     .header-text {
       display: flex;
       flex-direction: column;
-      flex: 1;
     }
     .header-title { 
       color: white; 
@@ -48,26 +54,6 @@
     .header-sub { 
       color: rgba(255,255,255,0.62); 
       font-size: 13px; 
-    }
-    .cache-info {
-      color: rgba(255,255,255,0.5);
-      font-size: 11px;
-      text-align: right;
-    }
-    .refresh-btn {
-      background: rgba(253,208,35,0.2);
-      border: 1px solid rgba(253,208,35,0.4);
-      color: #FDD023;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      font-size: 12px;
-      font-family: Georgia, serif;
-      transition: all 0.2s;
-    }
-    .refresh-btn:hover {
-      background: rgba(253,208,35,0.3);
-      border-color: #FDD023;
     }
     .gold-bar { 
       height: 4px; 
@@ -179,7 +165,6 @@
       border: none;
       border-bottom: 3px solid transparent;
       background: white;
-      transition: all 0.2s;
     }
     .tab:hover {
       background: rgba(70,29,124,0.05);
@@ -248,6 +233,9 @@
       pointer-events: auto;
       box-shadow: 0 0 0 2px rgba(70,29,124,0.15);
     }
+    .year-label {
+      display: none;
+    }
 
     .slider-ticks {
       position: absolute;
@@ -290,20 +278,6 @@
       color: #7a6d96;
       font-size: 13px;
       margin-top: 8px;
-    }
-    .progress-bar {
-      width: 300px;
-      height: 6px;
-      background: #ddd5ee;
-      border-radius: 3px;
-      margin: 20px auto;
-      overflow: hidden;
-    }
-    .progress-fill {
-      height: 100%;
-      background: linear-gradient(90deg, #461D7C, #7c3aed);
-      width: 0%;
-      transition: width 0.3s ease;
     }
 
     /* Footer */
@@ -408,7 +382,6 @@
       border: none;
       border-bottom: 3px solid transparent;
       background: white;
-      transition: all 0.2s;
     }
     .nested-tab:hover {
       background: rgba(70,29,124,0.05);
@@ -445,10 +418,6 @@
     <div class="header-title">Louisiana State University</div>
     <div class="header-sub">OpenAlex Research Dashboard</div>
   </div>
-  <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px;">
-    <button id="refresh-btn" class="refresh-btn" onclick="refreshData()">↻ Refresh Data</button>
-    <div id="cache-info" class="cache-info"></div>
-  </div>
 </div>
 <div class="gold-bar"></div>
 
@@ -458,21 +427,20 @@
   <!-- Year slider -->
   <div class="slider-container">
     <div class="slider-wrapper">
+      <span id="year-min-label" class="year-label">2020</span>
       <div class="slider-track" style="position: relative;">
         <div class="slider-ticks" id="slider-ticks"></div>
         <input type="range" id="year-min" min="2020" max="2026" value="2020">
         <input type="range" id="year-max" min="2020" max="2026" value="2026">
       </div>
+      <span id="year-max-label" class="year-label">2026</span>
     </div>
   </div>
 
   <!-- Loading indicator -->
   <div id="loading" class="loading">
-    <div id="loading-text">Loading data from OpenAlex...</div>
-    <div class="loading-sub" id="loading-sub">Checking cache...</div>
-    <div class="progress-bar">
-      <div id="progress-fill" class="progress-fill"></div>
-    </div>
+    <div>Loading data from OpenAlex...</div>
+    <div class="loading-sub">This may take a few minutes on first load.</div>
   </div>
 
   <!-- Dashboard content -->
@@ -482,9 +450,9 @@
     <div style="display: flex; justify-content: center;">
       <div class="tabs" style="width: 100%;">
         <div class="tab active" onclick="showTab('overview', this)">Overview</div>
-        <div class="tab" onclick="showTab('publications', this)">Recent Publications</div>
-        <div class="tab" onclick="showTab('top-cited', this)">Top Cited</div>
-        <div class="tab" onclick="showTab('authors-topics', this)">Authors & Topics</div>
+        <div class="tab" onclick="openPublicationsTab(this)">Recent Publications</div>
+        <div class="tab" onclick="openTopCitedTab(this)">Top Cited</div>
+        <div class="tab" onclick="openAuthorsTopicsTab(this)">Authors & Topics</div>
       </div>
     </div>
 
@@ -621,9 +589,11 @@
 </div>
 
 <script>
-// Register ChartDataLabels globally but disable by default
+
 Chart.register(ChartDataLabels);
-Chart.defaults.set('plugins.datalabels', { display: false });
+Chart.defaults.plugins.datalabels = {
+  display: false
+};
   
 // ═══════════════════════════════════════════════════════════════════════════
 // Configuration
@@ -637,8 +607,6 @@ const CONFIG = {
   START_YEAR: 2020,
   CURRENT_YEAR: new Date().getFullYear(),
   CACHE_MAX_AGE_HOURS: 24,
-  SLIDER_DEBOUNCE_MS: 300, // Increased for better performance
-  FETCH_DELAY_MS: 100, // Reduced from 120ms for faster fetching
 };
 
 const COLORS = {
@@ -663,11 +631,11 @@ const COLORS = {
 let allWorks = [];
 let fundersData = [];
 let charts = {};
-let currentTab = 'overview';
+let worksLoaded = false;   // NEW: tracks if full works are loaded
 
-// ═══════════════════════════════════════════════════════════════════════════
-// IndexedDB Cache Management
-// ═══════════════════════════════════════════════════════════════════════════
+
+
+/* ================= IndexedDB Cache ================= */
 
 const DB_NAME = "lsu_openalex_cache";
 const DB_VERSION = 1;
@@ -716,6 +684,10 @@ async function idbClear() {
   const tx = db.transaction(STORE_NAME, "readwrite");
   tx.objectStore(STORE_NAME).clear();
 }
+  
+// ═══════════════════════════════════════════════════════════════════════════
+// Cache Management
+// ═══════════════════════════════════════════════════════════════════════════
 
 async function isCacheFresh() {
   const ts = await idbGet("cache_time");
@@ -730,53 +702,30 @@ async function getCacheAgeHours() {
 }
 
 async function loadCache() {
-  return {
-    works: await idbGet("works"),
-    funders: await idbGet("funders")
-  };
+  return await idbGet("works");
 }
 
-async function saveCache(works, funders) {
-  await idbSet("works", works);
-  await idbSet("funders", funders);
+async function saveCache(data) {
+  await idbSet("works", data);
   await idbSet("cache_time", Date.now());
 }
 
-// ═══════════════════════════════════════════════════════════════════════════
-// UI Helpers
-// ═══════════════════════════════════════════════════════════════════════════
+async function ensureWorksLoaded() {
+  if (worksLoaded) return;
 
-function updateLoadingProgress(current, total, message) {
-  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
-  document.getElementById('progress-fill').style.width = percent + '%';
-  document.getElementById('loading-sub').textContent = message || `${current.toLocaleString()} / ${total.toLocaleString()} works`;
-}
+  const cachedWorks = await loadCache();
+  const cacheFresh = await isCacheFresh();
 
-function updateCacheInfo() {
-  getCacheAgeHours().then(hours => {
-    const info = document.getElementById('cache-info');
-    if (!hours) {
-      info.textContent = 'No cache';
-      return;
-    }
-    
-    if (hours < 1) {
-      info.textContent = `Cache: ${Math.round(hours * 60)}m old`;
-    } else if (hours < 24) {
-      info.textContent = `Cache: ${Math.round(hours)}h old`;
-    } else {
-      info.textContent = `Cache: ${Math.round(hours / 24)}d old`;
-    }
-  });
-}
-
-async function refreshData() {
-  if (!confirm('This will clear the cache and reload all data from OpenAlex. Continue?')) {
-    return;
+  if (cacheFresh && cachedWorks?.length) {
+    console.log("Using cached works (lazy load)");
+    allWorks = cachedWorks;
+  } else {
+    console.log("Fetching full works (lazy load)");
+    allWorks = await fetchWorks(); // saves cache
   }
-  
-  await idbClear();
-  location.reload();
+
+  worksLoaded = true;
+  setupSlidersFromWorks();
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -785,7 +734,6 @@ async function refreshData() {
 
 async function fetchWorks() {
   console.log("Fetching works from OpenAlex…");
-  updateLoadingProgress(0, 100, "Starting fetch...");
 
   const filterString =
     `institutions.ror:${CONFIG.ROR_ID},` +
@@ -794,11 +742,11 @@ async function fetchWorks() {
 
   const fields =
     "id,title,publication_year,cited_by_count,primary_location," +
-    "open_access,type,doi,apc_list,publication_date,authorships,primary_topic";
+    "open_access,type,doi,apc_list,apc_paid,publication_date," +
+    "authorships,primary_topic";
 
   let cursor = "*";
   let results = [];
-  let totalCount = 0;
 
   while (true) {
     const params = new URLSearchParams({
@@ -811,9 +759,9 @@ async function fetchWorks() {
     });
 
     const url = `${CONFIG.BASE_URL}/works?${params}`;
+
     let data = null;
 
-    // Retry logic with exponential backoff
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const res = await fetch(url);
@@ -821,7 +769,7 @@ async function fetchWorks() {
         if (!res.ok) {
           if (res.status >= 500) {
             console.warn("OpenAlex 5xx error, retrying…");
-            await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+            await new Promise(r => setTimeout(r, 1500));
             continue;
           }
           throw new Error(`HTTP ${res.status}`);
@@ -839,19 +787,56 @@ async function fetchWorks() {
     if (!data || !data.results?.length) break;
 
     results.push(...data.results);
-    totalCount = data.meta?.count || results.length;
-    
-    updateLoadingProgress(results.length, totalCount);
+
+    console.log(
+      `Fetched ${results.length} / ${data.meta?.count ?? "?"} works…`
+    );
 
     cursor = data.meta?.next_cursor;
     if (!cursor || cursor === "*") break;
 
-    // Rate limiting
-    await new Promise(r => setTimeout(r, CONFIG.FETCH_DELAY_MS));
+    await new Promise(r => setTimeout(r, 120)); // gentle rate limiting
   }
 
-  console.log("Fetch complete:", results.length);
+  console.log("Fetch complete — saving to cache:", results.length);
+
+  await saveCache(results);
   return results;
+}
+
+async function fetchWorksByYear() {
+  const params = new URLSearchParams({
+    filter: `institutions.ror:${CONFIG.ROR_ID}`,
+    "group-by": "publication_year",
+    mailto: CONFIG.MAILTO
+  });
+
+  const res = await fetch(`${CONFIG.BASE_URL}/works?${params}`);
+  const data = await res.json();
+
+  return data.group_by.map(g => ({
+    year: g.key,
+    count: g.count
+  }));
+}
+
+async function fetchOAStatus() {
+  const params = new URLSearchParams({
+    filter: `institutions.ror:${CONFIG.ROR_ID}`,
+    "group-by": "open_access.is_oa",
+    mailto: CONFIG.MAILTO
+  });
+
+  const res = await fetch(`${CONFIG.BASE_URL}/works?${params}`);
+  const data = await res.json();
+
+  let oa = 0, closed = 0;
+  data.group_by.forEach(g => {
+    if (g.key === "true") oa = g.count;
+    else closed = g.count;
+  });
+
+  return { oa, closed };
 }
 
 async function fetchFunders() {
@@ -878,6 +863,24 @@ async function fetchFunders() {
   }
 }
 
+async function fetchWorksByYearAgg() {
+  const params = new URLSearchParams({
+    filter: `institutions.ror:${CONFIG.ROR_ID}`,
+    "group-by": "publication_year",
+    mailto: CONFIG.MAILTO
+  });
+
+  const res = await fetch(`${CONFIG.BASE_URL}/works?${params}`);
+  const data = await res.json();
+
+  return data.group_by || [];
+}
+
+async function loadFastCharts() {
+  const yearAgg = await fetchWorksByYearAgg();
+  createPublicationsPerYearChartFromAgg(yearAgg);
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // Data Processing
 // ═══════════════════════════════════════════════════════════════════════════
@@ -897,16 +900,20 @@ function getLSUAuthors(work) {
     .filter(Boolean);
 }
 
-// Optimized filtering with early return
+
+function renderSkeletons() {
+  document.querySelectorAll("canvas").forEach(c => {
+    c.parentElement.classList.add("skeleton");
+  });
+}
+
 function filterWorksByYear(works, minYear, maxYear) {
-  const result = [];
-  for (let i = 0, len = works.length; i < len; i++) {
-    const year = works[i].publication_year;
-    if (year >= minYear && year <= maxYear) {
-      result.push(works[i]);
-    }
+  const out = [];
+  for (let i = 0; i < works.length; i++) {
+    const y = works[i].publication_year;
+    if (y >= minYear && y <= maxYear) out.push(works[i]);
   }
-  return result;
+  return out;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -914,18 +921,20 @@ function filterWorksByYear(works, minYear, maxYear) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function showTab(tabName, element) {
-  currentTab = tabName;
-  
+  // Hide all tab contents
   document.querySelectorAll('.tab-content').forEach(el => {
     el.classList.remove('active');
   });
   
+  // Deactivate all tabs
   document.querySelectorAll('.tab').forEach(el => {
     el.classList.remove('active');
   });
   
+  // Show selected tab content
   document.getElementById(`tab-${tabName}`).classList.add('active');
   
+  // Activate selected tab
   if (element) {
     element.classList.add('active');
   }
@@ -934,16 +943,40 @@ function showTab(tabName, element) {
 function showNestedTab(tabName, element) {
   const parent = element.closest('.card');
   
+  // Hide all nested contents in this card
   parent.querySelectorAll('.nested-content').forEach(el => {
     el.classList.remove('active');
   });
   
+  // Deactivate all nested tabs in this card
   parent.querySelectorAll('.nested-tab').forEach(el => {
     el.classList.remove('active');
   });
   
+  // Show selected nested content
   parent.querySelector(`#nested-${tabName}`).classList.add('active');
+  
+  // Activate selected nested tab
   element.classList.add('active');
+}
+
+async function openPublicationsTab(el) {
+  showTab('publications', el);
+  await ensureWorksLoaded();
+  updateDashboard();
+}
+
+async function openTopCitedTab(el) {
+  showTab('top-cited', el);
+  await ensureWorksLoaded();
+  createCitedTable(allWorks);
+}
+
+async function openAuthorsTopicsTab(el) {
+  showTab('authors-topics', el);
+  await ensureWorksLoaded();
+  createAuthorsTable(allWorks);
+  createTopicsTable(allWorks);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -952,17 +985,9 @@ function showNestedTab(tabName, element) {
 
 function updateStats(works, yearMin, yearMax) {
   const total = works.length;
-  
-  let totalCitations = 0;
-  let oaCount = 0;
-  
-  // Single pass through data
-  for (let i = 0; i < total; i++) {
-    totalCitations += works[i].cited_by_count || 0;
-    if (works[i].open_access?.is_oa) oaCount++;
-  }
-  
+  const totalCitations = works.reduce((sum, w) => sum + (w.cited_by_count || 0), 0);
   const avgCitations = total > 0 ? Math.round(totalCitations / total * 10) / 10 : 0;
+  const oaCount = works.filter(w => w.open_access?.is_oa).length;
   const oaPct = total > 0 ? Math.round(oaCount / total * 100) : 0;
 
   document.getElementById('stat-works').textContent = total.toLocaleString();
@@ -970,597 +995,626 @@ function updateStats(works, yearMin, yearMax) {
   document.getElementById('stat-citations').textContent = totalCitations.toLocaleString();
   document.getElementById('stat-avg-citations').textContent = avgCitations;
   document.getElementById('stat-oa').textContent = `${oaPct}%`;
-  document.getElementById('stat-oa-sub').textContent = `${oaCount.toLocaleString()} OA works`;
+  document.getElementById('stat-oa-sub').textContent = `${oaCount} OA works`;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Charts - Optimized with error handling
+// Charts
 // ═══════════════════════════════════════════════════════════════════════════
 
 function destroyChart(chartName) {
-  try {
-    if (charts[chartName]?.destroy) {
-      charts[chartName].destroy();
-      charts[chartName] = null;
-    }
-  } catch (e) {
-    console.error(`Error destroying chart ${chartName}:`, e);
+  const c = charts[chartName];
+  if (c && typeof c.destroy === "function") {
+    c.destroy();
+    charts[chartName] = null;
   }
 }
 
 function createPublicationsPerYearChart(works) {
-  try {
-    destroyChart('year');
-    
-    const byYear = {};
-    for (const w of works) {
-      if (w.publication_year) {
-        byYear[w.publication_year] = (byYear[w.publication_year] || 0) + 1;
-      }
+  destroyChart('year');
+  
+  const byYear = {};
+  works.forEach(w => {
+    const year = w.publication_year;
+    if (year) {
+      byYear[year] = (byYear[year] || 0) + 1;
     }
+  });
 
-    const years = Object.keys(byYear).sort();
-    const counts = years.map(y => byYear[y]);
+  const years = Object.keys(byYear).sort();
+  const counts = years.map(y => byYear[y]);
 
-    charts.year = new Chart(document.getElementById('chart-year'), {
-      type: 'bar',
-      data: {
-        labels: years,
-        datasets: [{
-          data: counts,
-          backgroundColor: COLORS.LSU_PURPLE,
-        }]
+  const ctx = document.getElementById('chart-year');
+  charts.year = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [{
+        data: counts,
+        backgroundColor: COLORS.LSU_PURPLE,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: true },
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: true },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+          }
         },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: '#e5e7eb' },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
+        y: {
+          beginAtZero: true,
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
           }
         }
-      },
-      plugins: [{
-        afterDatasetsDraw(chart) {
-          const ctx = chart.ctx;
-          chart.data.datasets.forEach((dataset, i) => {
-            const meta = chart.getDatasetMeta(i);
-            meta.data.forEach((bar, index) => {
-              const data = dataset.data[index];
-              ctx.fillStyle = 'white';
-              ctx.font = 'bold 13px Roboto, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(data.toLocaleString(), bar.x, bar.y + 15);
-            });
+      }
+    },
+    plugins: [{
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach((dataset, i) => {
+          const meta = chart.getDatasetMeta(i);
+          meta.data.forEach((bar, index) => {
+            const data = dataset.data[index];
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 13px Roboto, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(data.toLocaleString(), bar.x, bar.y + 15);
           });
-        }
-      }]
-    });
-  } catch (e) {
-    console.error('Error creating publications chart:', e);
-  }
+        });
+      }
+    }]
+  });
 }
 
 function createOAChart(works) {
-  try {
-    destroyChart('oa');
+  destroyChart('oa');
 
-    let oaYes = 0;
-    for (const w of works) {
-      if (w.open_access?.is_oa) oaYes++;
-    }
-    const oaNo = works.length - oaYes;
+  const oaYes = works.filter(w => w.open_access?.is_oa).length;
+  const oaNo = works.length - oaYes;
 
-    charts.oa = new Chart(document.getElementById('chart-oa'), {
-      type: 'doughnut',
-      data: {
-        labels: ['Open Access', 'Closed'],
-        datasets: [{
+  const ctx = document.getElementById('chart-oa');
+
+  charts.oa = new Chart(ctx, {
+    type: 'doughnut',
+
+    data: {
+      labels: ['Open Access', 'Closed'],
+      datasets: [
+        {
           data: [oaYes, oaNo],
           backgroundColor: [COLORS.GREEN, COLORS.GRAY],
           borderWidth: 0,
           hoverOffset: 6
-        }]
+        }
+      ]
+    },
+
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+
+      layout: {
+        padding: 10
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        layout: { padding: 10 },
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-              padding: 14,
-              boxWidth: 12,
-              boxHeight: 12
+
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: {
+              family: 'Roboto, sans-serif',
+              size: 12
+            },
+            color: '#7a6d96',
+            padding: 14,
+            boxWidth: 12,
+            boxHeight: 12
+          }
+        },
+
+        tooltip: {
+          callbacks: {
+            label: (context) => {
+              const data = context.dataset.data;
+              const total = data.reduce((a, b) => a + b, 0);
+              const value = context.parsed;
+              const pct = total ? Math.round((value / total) * 100) : 0;
+
+              return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
             }
+          }
+        },
+
+        datalabels: {
+          display: true,
+          color: '#ffffff',
+          font: {
+            weight: 'bold',
+            size: 12
           },
-          tooltip: {
-            callbacks: {
-              label: (context) => {
-                const total = context.dataset.data.reduce((a, b) => a + b, 0);
-                const value = context.parsed;
-                const pct = total ? Math.round((value / total) * 100) : 0;
-                return `${context.label}: ${value.toLocaleString()} (${pct}%)`;
-              }
-            }
-          },
-          datalabels: {
-            display: true,
-            color: '#ffffff',
-            font: { weight: 'bold', size: 12 },
-            formatter: (value, ctx) => {
-              const total = ctx.chart.data.datasets[0].data.reduce((a, b) => a + b, 0);
-              return total ? Math.round((value / total) * 100) + '%' : '0%';
-            }
+          formatter: (value, ctx) => {
+            const data = ctx.chart.data.datasets[0].data;
+            const total = data.reduce((a, b) => a + b, 0);
+
+            return total ? Math.round((value / total) * 100) + '%' : '0%';
           }
         }
       }
-    });
-  } catch (e) {
-    console.error('Error creating OA chart:', e);
-  }
+    }
+  });
 }
   
 function createTypesChart(works) {
-  try {
-    destroyChart('types');
+  destroyChart('types');
 
-    const KEEP = new Set(['article', 'preprint', 'book-chapter']);
-    const typeCounts = {};
+  const KEEP = new Set(['article', 'preprint', 'book-chapter']);
+  const typeCounts = {};
 
-    for (const w of works) {
-      if (w.type) {
-        const type = KEEP.has(w.type) ? w.type : 'other';
-        typeCounts[type] = (typeCounts[type] || 0) + 1;
-      }
-    }
+  works.forEach(w => {
+    if (!w.type) return;
+    const typeGrouped = KEEP.has(w.type) ? w.type : 'other';
+    typeCounts[typeGrouped] = (typeCounts[typeGrouped] || 0) + 1;
+  });
 
-    const sorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
-    const labels = sorted.map(t => t[0]);
-    const data = sorted.map(t => t[1]);
+  const sorted = Object.entries(typeCounts).sort((a, b) => b[1] - a[1]);
+  const labels = sorted.map(t => t[0]);
+  const data = sorted.map(t => t[1]);
 
-    const colorMap = {
-      'article': COLORS.LSU_PURPLE,
-      'preprint': COLORS.LSU_GOLD,
-      'book-chapter': COLORS.GREEN,
-      'other': COLORS.GRAY
-    };
-
-    charts.types = new Chart(document.getElementById('chart-types'), {
-      type: 'doughnut',
-      data: {
-        labels,
-        datasets: [{
-          data,
-          backgroundColor: labels.map(l => colorMap[l] || COLORS.GRAY),
-          borderWidth: 0,
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'bottom',
-            labels: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-              padding: 8,
-            }
-          },
-          datalabels: {
-            display: true,
-            color: '#fff',
-            font: { weight: 'bold', size: 12 },
-            formatter: (value, ctx) => {
-              const total = ctx.chart.data.datasets[0].data.reduce((a,b) => a + b, 0);
-              return Math.round((value / total) * 100) + '%';
-            }
+  const ctx = document.getElementById('chart-types');
+  charts.types = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels,
+      datasets: [{
+        data,
+        backgroundColor: labels.map(l =>
+          ({
+            article: COLORS.LSU_PURPLE,
+            preprint: COLORS.LSU_GOLD,
+            'book-chapter': COLORS.GREEN,
+            other: COLORS.GRAY
+          })[l] || COLORS.GRAY
+        ),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'bottom',
+          labels: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+            padding: 8,
+          }
+        },
+        datalabels: {
+          display: true,
+          color: '#fff',
+          font: { weight: 'bold', size: 12 },
+          formatter: (value, ctx) => {
+            const data = ctx.chart.data.datasets[0].data;
+            const total = data.reduce((a,b) => a + b, 0);
+            return Math.round((value / total) * 100) + '%';
           }
         }
       }
-    });
-  } catch (e) {
-    console.error('Error creating types chart:', e);
-  }
+    }
+  });
 }
 
 function createAPCChart(works) {
-  try {
-    destroyChart('apc');
-    
-    const apcByYear = {};
-    for (const w of works) {
-      if (w.apc_list?.value_usd && w.publication_year) {
-        apcByYear[w.publication_year] = (apcByYear[w.publication_year] || 0) + w.apc_list.value_usd;
-      }
-    }
+  destroyChart('apc');
+  
+  const apcByYear = {};
+  works.forEach(w => {
+    if (!w.apc_list?.value_usd || !w.publication_year) return;
+    const year = w.publication_year;
+    apcByYear[year] = (apcByYear[year] || 0) + w.apc_list.value_usd;
+  });
 
-    const years = Object.keys(apcByYear).sort();
-    const amounts = years.map(y => apcByYear[y]);
-    const labels = amounts.map(v => 
-      v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : `$${Math.round(v/1000)}K`
-    );
+  const years = Object.keys(apcByYear).sort();
+  const amounts = years.map(y => apcByYear[y]);
+  const labels = amounts.map(v => 
+    v >= 1000000 ? `$${(v/1000000).toFixed(1)}M` : `$${Math.round(v/1000)}K`
+  );
 
-    charts.apc = new Chart(document.getElementById('chart-apc'), {
-      type: 'bar',
-      data: {
-        labels: years,
-        datasets: [{
-          data: amounts,
-          backgroundColor: '#6aaa5e',
-        }]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: {
-            callbacks: {
-              label: (context) => '$' + context.parsed.y.toLocaleString()
+  const ctx = document.getElementById('chart-apc');
+  charts.apc = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [{
+        data: amounts,
+        backgroundColor: '#6aaa5e',
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: function(context) {
+              return '$' + context.parsed.y.toLocaleString();
             }
+          }
+        }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
           }
         },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: '#e5e7eb' },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-              callback: (value) => {
-                if (value >= 1000000) return '$' + (value/1000000).toFixed(1) + 'M';
-                if (value >= 1000) return '$' + Math.round(value/1000) + 'K';
-                return '$' + value;
-              }
+        y: {
+          beginAtZero: true,
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+            callback: function(value) {
+              if (value >= 1000000) return '$' + (value/1000000).toFixed(1) + 'M';
+              if (value >= 1000) return '$' + Math.round(value/1000) + 'K';
+              return '$' + value;
             }
           }
         }
-      },
-      plugins: [{
-        afterDatasetsDraw(chart) {
-          const ctx = chart.ctx;
-          chart.data.datasets.forEach((dataset, i) => {
-            const meta = chart.getDatasetMeta(i);
-            meta.data.forEach((bar, index) => {
-              ctx.fillStyle = 'white';
-              ctx.font = 'bold 14px Roboto, sans-serif';
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(labels[index], bar.x, bar.y + 20);
-            });
+      }
+    },
+    plugins: [{
+      afterDatasetsDraw(chart) {
+        const ctx = chart.ctx;
+        chart.data.datasets.forEach((dataset, i) => {
+          const meta = chart.getDatasetMeta(i);
+          meta.data.forEach((bar, index) => {
+            const labelText = labels[index];
+            ctx.fillStyle = 'white';
+            ctx.font = 'bold 14px Roboto, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(labelText, bar.x, bar.y + 20);
           });
-        }
-      }]
-    });
-  } catch (e) {
-    console.error('Error creating APC chart:', e);
-  }
+        });
+      }
+    }]
+  });
 }
 
 function createJournalsChart(works) {
-  try {
-    destroyChart('journals');
-    
-    const journalCounts = {};
-    for (const w of works) {
-      const journal = w.primary_location?.source?.display_name;
-      if (journal) {
-        journalCounts[journal] = (journalCounts[journal] || 0) + 1;
-      }
+  destroyChart('journals');
+  
+  const journalCounts = {};
+  works.forEach(w => {
+    const journal = w.primary_location?.source?.display_name;
+    if (journal) {
+      journalCounts[journal] = (journalCounts[journal] || 0) + 1;
     }
+  });
 
-    const sorted = Object.entries(journalCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 10);
-    
-    const labels = sorted.map(j => 
-      j[0].length > 45 ? j[0].slice(0, 45) + '…' : j[0]
-    );
-    const data = sorted.map(j => j[1]);
+  const sorted = Object.entries(journalCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+  
+  const labels = sorted.map(j => 
+    j[0].length > 45 ? j[0].slice(0, 45) + '…' : j[0]
+  );
+  const data = sorted.map(j => j[1]);
 
-    charts.journals = new Chart(document.getElementById('chart-journals'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          data,
-          backgroundColor: COLORS.LSU_GOLD_D,
-        }]
+  const ctx = document.getElementById('chart-journals');
+  charts.journals = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: COLORS.LSU_GOLD_D,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
       },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          x: {
-            beginAtZero: true,
-            grid: { color: '#e5e7eb' },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
-          y: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+          }
+        },
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
           }
         }
       }
-    });
-  } catch (e) {
-    console.error('Error creating journals chart:', e);
-  }
+    }
+  });
 }
 
 function createFundersChart() {
-  try {
-    destroyChart('funders');
-    
-    if (!fundersData?.length) return;
+  destroyChart('funders');
+  
+  if (!fundersData || fundersData.length === 0) {
+    return;
+  }
 
-    const top10 = fundersData.slice(0, 10);
-    const labels = top10.map(f => 
-      f.name.length > 42 ? f.name.slice(0, 42) + '…' : f.name
-    );
-    const data = top10.map(f => f.count);
+  const top10 = fundersData.slice(0, 10);
+  const labels = top10.map(f => 
+    f.name.length > 42 ? f.name.slice(0, 42) + '…' : f.name
+  );
+  const data = top10.map(f => f.count);
 
-    charts.funders = new Chart(document.getElementById('chart-funders'), {
-      type: 'bar',
-      data: {
-        labels,
-        datasets: [{
-          data,
-          backgroundColor: COLORS.LSU_PURPLE,
-        }]
+  const ctx = document.getElementById('chart-funders');
+  charts.funders = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: labels,
+      datasets: [{
+        data: data,
+        backgroundColor: COLORS.LSU_PURPLE,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { enabled: true },
       },
-      options: {
-        indexAxis: 'y',
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { enabled: true },
+      scales: {
+        x: {
+          beginAtZero: true,
+          max: 8000,
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            stepSize: 1000,
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+          }
         },
-        scales: {
-          x: {
-            beginAtZero: true,
-            max: 8000,
-            grid: { color: '#e5e7eb' },
-            ticks: {
-              stepSize: 1000,
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
-          y: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
+        y: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
           }
         }
       }
-    });
-  } catch (e) {
-    console.error('Error creating funders chart:', e);
-  }
+    }
+  });
 }
 
 function createTrendsOAChart(works) {
-  try {
-    destroyChart('trendsOA');
+  destroyChart('trendsOA');
+  
+  const byYear = {};
+  works.forEach(w => {
+    const year = w.publication_year;
+    if (!year) return;
     
-    const byYear = {};
-    for (const w of works) {
-      const year = w.publication_year;
-      if (!year) continue;
-      
-      if (!byYear[year]) {
-        byYear[year] = { total: 0, oa_all: 0, gold: 0, hybrid: 0 };
-      }
-      
-      byYear[year].total++;
-      if (w.open_access?.is_oa) byYear[year].oa_all++;
-      if (w.open_access?.oa_status === 'gold') byYear[year].gold++;
-      if (w.open_access?.oa_status === 'hybrid') byYear[year].hybrid++;
+    if (!byYear[year]) {
+      byYear[year] = { total: 0, oa_all: 0, gold: 0, hybrid: 0 };
     }
-
-    const years = Object.keys(byYear).sort();
     
-    charts.trendsOA = new Chart(document.getElementById('chart-trends-oa'), {
-      type: 'line',
-      data: {
-        labels: years,
-        datasets: [
-          {
-            label: 'Total',
-            data: years.map(y => byYear[y].total),
-            borderColor: COLORS.LSU_PURPLE,
-            backgroundColor: COLORS.LSU_PURPLE,
-            borderWidth: 2.5,
-            tension: 0,
-          },
-          {
-            label: 'OA (All)',
-            data: years.map(y => byYear[y].oa_all),
-            borderColor: COLORS.GREEN,
-            backgroundColor: COLORS.GREEN,
-            borderWidth: 2.5,
-            tension: 0,
-          },
-          {
-            label: 'Gold OA',
-            data: years.map(y => byYear[y].gold),
-            borderColor: COLORS.LSU_GOLD,
-            backgroundColor: COLORS.LSU_GOLD,
-            borderWidth: 2.5,
-            borderDash: [5, 5],
-            tension: 0,
-          },
-          {
-            label: 'Hybrid OA',
-            data: years.map(y => byYear[y].hybrid),
-            borderColor: COLORS.VIOLET,
-            backgroundColor: COLORS.VIOLET,
-            borderWidth: 2.5,
-            borderDash: [2, 2],
-            tension: 0,
-          },
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-              usePointStyle: true,
-            }
-          },
+    byYear[year].total++;
+    if (w.open_access?.is_oa) byYear[year].oa_all++;
+    if (w.open_access?.oa_status === 'gold') byYear[year].gold++;
+    if (w.open_access?.oa_status === 'hybrid') byYear[year].hybrid++;
+  });
+
+  const years = Object.keys(byYear).sort();
+  
+  const ctx = document.getElementById('chart-trends-oa');
+  charts.trendsOA = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: years,
+      datasets: [
+        {
+          label: 'Total',
+          data: years.map(y => byYear[y].total),
+          borderColor: COLORS.LSU_PURPLE,
+          backgroundColor: COLORS.LSU_PURPLE,
+          borderWidth: 2.5,
+          tension: 0,
         },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: '#e5e7eb' },
-            ticks: {
-              stepSize: 500,
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
+        {
+          label: 'OA (All)',
+          data: years.map(y => byYear[y].oa_all),
+          borderColor: COLORS.GREEN,
+          backgroundColor: COLORS.GREEN,
+          borderWidth: 2.5,
+          tension: 0,
+        },
+        {
+          label: 'Gold OA',
+          data: years.map(y => byYear[y].gold),
+          borderColor: COLORS.LSU_GOLD,
+          backgroundColor: COLORS.LSU_GOLD,
+          borderWidth: 2.5,
+          borderDash: [5, 5],
+          tension: 0,
+        },
+        {
+          label: 'Hybrid OA',
+          data: years.map(y => byYear[y].hybrid),
+          borderColor: COLORS.VIOLET,
+          backgroundColor: COLORS.VIOLET,
+          borderWidth: 2.5,
+          borderDash: [2, 2],
+          tension: 0,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+            usePointStyle: true,
+          }
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+          }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            stepSize: 500,
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
           }
         }
       }
-    });
-  } catch (e) {
-    console.error('Error creating trends OA chart:', e);
-  }
+    }
+  });
 }
 
 function createTrendsPublisherChart(works) {
-  try {
-    destroyChart('trendsPublisher');
-    
-    // Get top 5 publishers
-    const publisherCounts = {};
-    for (const w of works) {
-      const pub = w.primary_location?.source?.host_organization_name;
-      if (pub) {
-        publisherCounts[pub] = (publisherCounts[pub] || 0) + 1;
-      }
+  destroyChart('trendsPublisher');
+  
+  // Get top 5 publishers
+  const publisherCounts = {};
+  works.forEach(w => {
+    const pub = w.primary_location?.source?.host_organization_name;
+    if (pub) {
+      publisherCounts[pub] = (publisherCounts[pub] || 0) + 1;
     }
+  });
+  
+  const topPublishers = Object.entries(publisherCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(p => p[0]);
+
+  // Build year x publisher data
+  const byYearPublisher = {};
+  works.forEach(w => {
+    const year = w.publication_year;
+    const pub = w.primary_location?.source?.host_organization_name;
+    if (!year || !pub || !topPublishers.includes(pub)) return;
     
-    const topPublishers = Object.entries(publisherCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 5)
-      .map(p => p[0]);
+    if (!byYearPublisher[year]) byYearPublisher[year] = {};
+    byYearPublisher[year][pub] = (byYearPublisher[year][pub] || 0) + 1;
+  });
 
-    // Build year x publisher data
-    const byYearPublisher = {};
-    for (const w of works) {
-      const year = w.publication_year;
-      const pub = w.primary_location?.source?.host_organization_name;
-      if (!year || !pub || !topPublishers.includes(pub)) continue;
-      
-      if (!byYearPublisher[year]) byYearPublisher[year] = {};
-      byYearPublisher[year][pub] = (byYearPublisher[year][pub] || 0) + 1;
-    }
+  const years = Object.keys(byYearPublisher).sort();
+  const colors = [COLORS.BLUE, COLORS.ORANGE2, COLORS.RED, COLORS.TEAL, COLORS.GREEN2];
 
-    const years = Object.keys(byYearPublisher).sort();
-    const colors = [COLORS.BLUE, COLORS.ORANGE2, COLORS.RED, COLORS.TEAL, COLORS.GREEN2];
+  const datasets = topPublishers.map((pub, i) => ({
+    label: pub,
+    data: years.map(y => byYearPublisher[y]?.[pub] || 0),
+    borderColor: colors[i % colors.length],
+    backgroundColor: colors[i % colors.length],
+    borderWidth: 2.5,
+    tension: 0,
+  }));
 
-    const datasets = topPublishers.map((pub, i) => ({
-      label: pub,
-      data: years.map(y => byYearPublisher[y]?.[pub] || 0),
-      borderColor: colors[i % colors.length],
-      backgroundColor: colors[i % colors.length],
-      borderWidth: 2.5,
-      tension: 0,
-    }));
-
-    charts.trendsPublisher = new Chart(document.getElementById('chart-trends-publisher'), {
-      type: 'line',
-      data: {
-        labels: years,
-        datasets,
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            position: 'top',
-            labels: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
+  const ctx = document.getElementById('chart-trends-publisher');
+  charts.trendsPublisher = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: years,
+      datasets: datasets,
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+          }
         },
-        scales: {
-          x: {
-            grid: { display: false },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
-          },
-          y: {
-            beginAtZero: true,
-            grid: { color: '#e5e7eb' },
-            ticks: {
-              font: { family: 'Roboto, sans-serif', size: 12 },
-              color: '#7a6d96',
-            }
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
+          }
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: '#e5e7eb' },
+          ticks: {
+            font: { family: 'Roboto, sans-serif', size: 12 },
+            color: '#7a6d96',
           }
         }
       }
-    });
-  } catch (e) {
-    console.error('Error creating trends publisher chart:', e);
-  }
+    }
+  });
+}
+
+function createPublicationsPerYearChartFromAgg(yearAgg) {
+  destroyChart('year');
+
+  const years = yearAgg.map(d => d.key).sort();
+  const counts = yearAgg
+    .sort((a, b) => a.key - b.key)
+    .map(d => d.count);
+
+  const ctx = document.getElementById('chart-year');
+  charts.year = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: years,
+      datasets: [{
+        data: counts,
+        backgroundColor: COLORS.LSU_PURPLE
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false } },
+        y: { beginAtZero: true }
+      }
+    }
+  });
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1568,8 +1622,7 @@ function createTrendsPublisherChart(works) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function createRecentTable(works) {
-  const sorted = works
-    .slice()
+  const sorted = [...works]
     .sort((a, b) => (b.publication_date || '').localeCompare(a.publication_date || ''))
     .slice(0, 50);
 
@@ -1616,8 +1669,7 @@ function createRecentTable(works) {
 }
 
 function createCitedTable(works) {
-  const sorted = works
-    .slice()
+  const sorted = [...works]
     .sort((a, b) => (b.cited_by_count || 0) - (a.cited_by_count || 0))
     .slice(0, 20);
 
@@ -1660,12 +1712,12 @@ function createCitedTable(works) {
 function createAuthorsTable(works) {
   const authorCounts = {};
   
-  for (const w of works) {
+  works.forEach(w => {
     const authors = getLSUAuthors(w);
-    for (const author of authors) {
+    authors.forEach(author => {
       authorCounts[author] = (authorCounts[author] || 0) + 1;
-    }
-  }
+    });
+  });
 
   const sorted = Object.entries(authorCounts)
     .sort((a, b) => b[1] - a[1])
@@ -1696,12 +1748,12 @@ function createAuthorsTable(works) {
 function createTopicsTable(works) {
   const topicCounts = {};
   
-  for (const w of works) {
+  works.forEach(w => {
     const topic = w.primary_topic?.display_name;
     if (topic) {
       topicCounts[topic] = (topicCounts[topic] || 0) + 1;
     }
-  }
+  });
 
   const sorted = Object.entries(topicCounts)
     .sort((a, b) => b[1] - a[1])
@@ -1737,6 +1789,9 @@ function updateDashboard() {
   const yearMin = parseInt(document.getElementById('year-min').value);
   const yearMax = parseInt(document.getElementById('year-max').value);
   
+  document.getElementById('year-min-label').textContent = yearMin;
+  document.getElementById('year-max-label').textContent = yearMax;
+  
   const filtered = filterWorksByYear(allWorks, yearMin, yearMax);
   
   // Update subtitle texts
@@ -1750,16 +1805,16 @@ function updateDashboard() {
   // Update stats
   updateStats(filtered, yearMin, yearMax);
   
-  // Update charts (only on overview tab for performance)
-  if (currentTab === 'overview') {
+  // Update charts
+  if (worksLoaded) {
     createPublicationsPerYearChart(filtered);
-    createOAChart(filtered);
-    createTypesChart(filtered);
-    createAPCChart(filtered);
-    createJournalsChart(filtered);
-    createTrendsOAChart(filtered);
-    createTrendsPublisherChart(filtered);
   }
+  createOAChart(filtered);
+  createTypesChart(filtered);
+  createAPCChart(filtered);
+  createJournalsChart(filtered);
+  createTrendsOAChart(filtered);
+  createTrendsPublisherChart(filtered);
   
   // Update tables
   createRecentTable(filtered);
@@ -1769,12 +1824,14 @@ function updateDashboard() {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Slider Sync with Debouncing
+// Slider Sync
 // ═══════════════════════════════════════════════════════════════════════════
 
 let debounceTimer;
   
 function syncSliders() {
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(() => {
   const minSlider = document.getElementById('year-min');
   const maxSlider = document.getElementById('year-max');
   
@@ -1791,10 +1848,45 @@ function syncSliders() {
     maxSlider.value = minVal;
   }
   
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(() => {
     updateDashboard();
-  }, CONFIG.SLIDER_DEBOUNCE_MS);
+  }, 120);
+}
+
+function setupSlidersFromWorks() {
+  const years = allWorks.map(w => w.publication_year).filter(Boolean);
+  const minYear = Math.min(...years);
+  const maxYear = Math.max(...years);
+
+  const minSlider = document.getElementById('year-min');
+  const maxSlider = document.getElementById('year-max');
+
+  minSlider.min = minYear;
+  minSlider.max = maxYear;
+  minSlider.value = minYear;
+
+  maxSlider.min = minYear;
+  maxSlider.max = maxYear;
+  maxSlider.value = maxYear;
+
+  minSlider.addEventListener('input', syncSliders);
+  maxSlider.addEventListener('input', syncSliders);
+
+  buildSliderTicks(minYear, maxYear);
+}
+
+function buildSliderTicks(minYear, maxYear) {
+  const ticksContainer = document.getElementById('slider-ticks');
+  ticksContainer.innerHTML = '';
+
+  const step = 2;
+  const range = maxYear - minYear || 1;
+
+  for (let y = minYear; y <= maxYear; y += step) {
+    const span = document.createElement('span');
+    span.style.left = `${((y - minYear) / range) * 100}%`;
+    span.textContent = y;
+    ticksContainer.appendChild(span);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1803,93 +1895,26 @@ function syncSliders() {
 
 async function init() {
   try {
-    document.getElementById('loading-text').textContent = 'Checking cache...';
-    updateLoadingProgress(0, 100, 'Initializing...');
-    
-    const cache = await loadCache();
-    const cacheFresh = await isCacheFresh();
+    // 1️⃣ Show UI immediately
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
 
-    if (cacheFresh && cache.works?.length && cache.funders?.length) {
-      console.log("✓ Using cached data");
-      document.getElementById('loading-text').textContent = 'Loading from cache...';
-      updateLoadingProgress(100, 100, 'Ready!');
-      
-      allWorks = cache.works;
-      fundersData = cache.funders;
-    } else {
-      console.log("⟳ Cache expired or missing — fetching from OpenAlex");
-      document.getElementById('loading-text').textContent = 'Fetching from OpenAlex...';
-      
-      // Fetch in parallel
-      [allWorks, fundersData] = await Promise.all([
-        fetchWorks(),
-        fetchFunders()
-      ]);
-      
-      // Save to cache
-      await saveCache(allWorks, fundersData);
-      console.log("✓ Saved to cache");
-    }
-    
-    // Find year range
-    const years = allWorks.map(w => w.publication_year).filter(Boolean);
-    const minYear = Math.min(...years);
-    const maxYear = Math.max(...years);
-    
-    // Setup sliders
-    const minSlider = document.getElementById('year-min');
-    const maxSlider = document.getElementById('year-max');
-    
-    minSlider.min = minYear;
-    minSlider.max = maxYear;
-    minSlider.value = minYear;
-    
-    maxSlider.min = minYear;
-    maxSlider.max = maxYear;
-    maxSlider.value = maxYear;
-    
-    minSlider.addEventListener('input', syncSliders);
-    maxSlider.addEventListener('input', syncSliders);
+    // 2️⃣ Load FAST charts only (aggregations)
+    await loadFastCharts();
 
-    // Build slider ticks
-    const ticksContainer = document.getElementById('slider-ticks');
-    const step = 2;
-
-    for (let y = minYear; y <= maxYear; y += step) {
-      const span = document.createElement('span');
-      const range = maxYear - minYear || 1;
-      const pct = (y - minYear) / range;
-      span.style.left = `${pct * 100}%`;
-      span.textContent = y;
-      if (y % 2 === 0) span.style.fontWeight = '600';
-      ticksContainer.appendChild(span);
-    }
-        
-    // Create funders chart (static)
+    // 3️⃣ Lightweight data (funders)
+    fundersData = await fetchFunders();
     if (fundersData?.length) {
       createFundersChart();
     }
-    
-    // Initial dashboard update
-    updateDashboard();
-    
-    // Update cache info
-    updateCacheInfo();
-    
-    // Hide loading, show dashboard
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
-    
-    console.log(`✓ Ready — ${allWorks.length.toLocaleString()} works loaded`);
-    
+
+    console.log("Dashboard ready (aggregates loaded)");
+
   } catch (error) {
-    console.error('❌ Initialization error:', error);
+    console.error("Error initializing dashboard:", error);
     document.getElementById('loading').innerHTML = `
-      <div>Error loading data from OpenAlex</div>
+      <div>Error loading dashboard</div>
       <div class="loading-sub">${error.message}</div>
-      <div class="loading-sub" style="margin-top: 16px;">
-        <button onclick="location.reload()" style="padding: 8px 16px; cursor: pointer; border-radius: 6px; border: 1px solid #461D7C; background: white; color: #461D7C; font-family: Georgia, serif;">Retry</button>
-      </div>
     `;
   }
 }
