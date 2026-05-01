@@ -1537,16 +1537,18 @@ function updateDashboard() {
   updateStats(filtered, yearMin, yearMax);
   
   // Update charts
-  if (worksLoaded) {
+  try {
     createPublicationsPerYearChart(filtered);
+    createOAChart(filtered);
+    createTypesChart(filtered);
+    createAPCChart(filtered);
+    createJournalsChart(filtered);
+    createTrendsOAChart(filtered);
+    createTrendsPublisherChart(filtered);
+    createFundersChart(filtered);
+  } catch (e) {
+    console.error("Chart error:", e);
   }
-  createOAChart(filtered);
-  createTypesChart(filtered);
-  createAPCChart(filtered);
-  createJournalsChart(filtered);
-  createTrendsOAChart(filtered);
-  createTrendsPublisherChart(filtered);
-  createFundersChart(filtered);
   
   // Update tables
   createRecentTable(filtered);
@@ -1588,6 +1590,10 @@ function setupSlidersFromWorks() {
   const years = allWorks.map(w => w.publication_year).filter(Boolean);
   const minYear = Math.min(...years);
   const maxYear = Math.max(...years);
+  if (!years.length) {
+    console.warn("No valid publication years found");
+    return;
+  }  
 
   const minSlider = document.getElementById('year-min');
   const maxSlider = document.getElementById('year-max');
@@ -1627,14 +1633,16 @@ function buildSliderTicks(minYear, maxYear) {
 
 async function init() {
   try {
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
-
-    const res = await fetch('/works_cache.json', { cache: 'no-store' });
+    const res = await fetch('./works_cache.json', { cache: 'no-store' });
     const data = await res.json();
 
-    allWorks = data.results || [];
+    allWorks = data.results || []; 
+    console.log("Works loaded:", allWorks.length);
+    console.log("Sample work:", allWorks[0]);
     worksLoaded = true;
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
 
     setupSlidersFromWorks();
     updateDashboard();
@@ -1651,6 +1659,7 @@ async function init() {
     `;
   }
 }
+
 
 // Start the app
 init();
