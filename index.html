@@ -602,11 +602,8 @@ Chart.defaults.plugins.datalabels = {
 const CONFIG = {
   INSTITUTION_ID: "I121820613",
   ROR_ID: "05ect4e57",
-  BASE_URL: "https://api.openalex.org",
-  MAILTO: "lsulibrary@lsu.edu",
   START_YEAR: 2020,
   CURRENT_YEAR: new Date().getFullYear(),
-  CACHE_MAX_AGE_HOURS: 24,
 };
 
 const COLORS = {
@@ -629,257 +626,8 @@ const COLORS = {
 // ═══════════════════════════════════════════════════════════════════════════
 
 let allWorks = [];
-let fundersData = [];
 let charts = {};
 let worksLoaded = false;   // NEW: tracks if full works are loaded
-
-
-
-/* ================= IndexedDB Cache ================= */
-
-const DB_NAME = "lsu_openalex_cache";
-const DB_VERSION = 1;
-const STORE_NAME = "works";
-
-let dbPromise = null;
-
-function openDB() {
-  if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onerror = () => reject(req.error);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE_NAME)) {
-        db.createObjectStore(STORE_NAME);
-      }
-    };
-    req.onsuccess = () => resolve(req.result);
-  });
-  return dbPromise;
-}
-
-async function idbSet(key, value) {
-  const db = await openDB();
-  return new Promise((resolve, reject) => {
-    const tx = db.transaction(STORE_NAME, "readwrite");
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.objectStore(STORE_NAME).put(value, key);
-  });
-}
-
-async function idbGet(key) {
-  const db = await openDB();
-  const tx = db.transaction(STORE_NAME, "readonly");
-  return new Promise(resolve => {
-    const req = tx.objectStore(STORE_NAME).get(key);
-    req.onsuccess = () => resolve(req.result ?? null);
-    req.onerror = () => resolve(null);
-  });
-}
-
-async function idbClear() {
-  const db = await openDB();
-  const tx = db.transaction(STORE_NAME, "readwrite");
-  tx.objectStore(STORE_NAME).clear();
-}
-  
-// ═══════════════════════════════════════════════════════════════════════════
-// Cache Management
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function isCacheFresh() {
-  const ts = await idbGet("cache_time");
-  if (!ts) return false;
-  return (Date.now() - ts) / 36e5 < CONFIG.CACHE_MAX_AGE_HOURS;
-}
-
-async function getCacheAgeHours() {
-  const ts = await idbGet("cache_time");
-  if (!ts) return null;
-  return (Date.now() - ts) / 36e5;
-}
-
-async function loadCache() {
-  return await idbGet("works");
-}
-
-async function saveCache(data) {
-  await idbSet("works", data);
-  await idbSet("cache_time", Date.now());
-}
-
-async function ensureWorksLoaded() {
-  if (worksLoaded) return;
-
-  const cachedWorks = await loadCache();
-  const cacheFresh = await isCacheFresh();
-
-  if (cacheFresh && cachedWorks?.length) {
-    console.log("Using cached works (lazy load)");
-    allWorks = cachedWorks;
-  } else {
-    console.log("Fetching full works (lazy load)");
-    allWorks = await fetchWorks(); // saves cache
-  }
-
-  worksLoaded = true;
-  setupSlidersFromWorks();
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// API Functions
-// ═══════════════════════════════════════════════════════════════════════════
-
-async function fetchWorks() {
-  console.log("Fetching works from OpenAlex…");
-
-  const filterString =
-    `institutions.ror:${CONFIG.ROR_ID},` +
-    `from_publication_date:${CONFIG.START_YEAR}-01-01,` +
-    `to_publication_date:${CONFIG.CURRENT_YEAR}-12-31`;
-
-  const fields =
-    "id,title,publication_year,cited_by_count,primary_location," +
-    "open_access,type,doi,apc_list,apc_paid,publication_date," +
-    "authorships,primary_topic";
-
-  let cursor = "*";
-  let results = [];
-
-  while (true) {
-    const params = new URLSearchParams({
-      filter: filterString,
-      "per-page": 200,
-      cursor,
-      select: fields,
-      sort: "publication_year:desc",
-      mailto: CONFIG.MAILTO,
-    });
-
-    const url = `${CONFIG.BASE_URL}/works?${params}`;
-
-    let data = null;
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        const res = await fetch(url);
-
-        if (!res.ok) {
-          if (res.status >= 500) {
-            console.warn("OpenAlex 5xx error, retrying…");
-            await new Promise(r => setTimeout(r, 1500));
-            continue;
-          }
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        data = await res.json();
-        break;
-      } catch (err) {
-        console.error("Fetch error:", err);
-        if (attempt === 4) throw err;
-        await new Promise(r => setTimeout(r, 1000));
-      }
-    }
-
-    if (!data || !data.results?.length) break;
-
-    results.push(...data.results);
-
-    console.log(
-      `Fetched ${results.length} / ${data.meta?.count ?? "?"} works…`
-    );
-
-    cursor = data.meta?.next_cursor;
-    if (!cursor || cursor === "*") break;
-
-    await new Promise(r => setTimeout(r, 120)); // gentle rate limiting
-  }
-
-  console.log("Fetch complete — saving to cache:", results.length);
-
-  await saveCache(results);
-  return results;
-}
-
-async function fetchWorksByYear() {
-  const params = new URLSearchParams({
-    filter: `institutions.ror:${CONFIG.ROR_ID}`,
-    "group-by": "publication_year",
-    mailto: CONFIG.MAILTO
-  });
-
-  const res = await fetch(`${CONFIG.BASE_URL}/works?${params}`);
-  const data = await res.json();
-
-  return data.group_by.map(g => ({
-    year: g.key,
-    count: g.count
-  }));
-}
-
-async function fetchOAStatus() {
-  const params = new URLSearchParams({
-    filter: `institutions.ror:${CONFIG.ROR_ID}`,
-    "group-by": "open_access.is_oa",
-    mailto: CONFIG.MAILTO
-  });
-
-  const res = await fetch(`${CONFIG.BASE_URL}/works?${params}`);
-  const data = await res.json();
-
-  let oa = 0, closed = 0;
-  data.group_by.forEach(g => {
-    if (g.key === "true") oa = g.count;
-    else closed = g.count;
-  });
-
-  return { oa, closed };
-}
-
-async function fetchFunders() {
-  try {
-    const params = new URLSearchParams({
-      filter: `institutions.ror:${CONFIG.ROR_ID}`,
-      "group-by": "funders.id",
-      "per-page": 10,
-      mailto: CONFIG.MAILTO,
-    });
-
-    const url = `${CONFIG.BASE_URL}/works?${params}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    
-    const groups = data.group_by || [];
-    return groups.map(g => ({
-      name: g.key_display_name || g.key.split('/').pop(),
-      count: g.count
-    }));
-  } catch (e) {
-    console.error("Error fetching funders:", e);
-    return [];
-  }
-}
-
-async function fetchWorksByYearAgg() {
-  const params = new URLSearchParams({
-    filter: `institutions.ror:${CONFIG.ROR_ID}`,
-    "group-by": "publication_year",
-    mailto: CONFIG.MAILTO
-  });
-
-  const res = await fetch(`${CONFIG.BASE_URL}/works?${params}`);
-  const data = await res.json();
-
-  return data.group_by || [];
-}
-
-async function loadFastCharts() {
-  const yearAgg = await fetchWorksByYearAgg();
-  createPublicationsPerYearChartFromAgg(yearAgg);
-}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Data Processing
@@ -962,19 +710,16 @@ function showNestedTab(tabName, element) {
 
 async function openPublicationsTab(el) {
   showTab('publications', el);
-  await ensureWorksLoaded();
   updateDashboard();
 }
 
 async function openTopCitedTab(el) {
   showTab('top-cited', el);
-  await ensureWorksLoaded();
   createCitedTable(allWorks);
 }
 
 async function openAuthorsTopicsTab(el) {
   showTab('authors-topics', el);
-  await ensureWorksLoaded();
   createAuthorsTable(allWorks);
   createTopicsTable(allWorks);
 }
@@ -1356,59 +1101,45 @@ function createJournalsChart(works) {
   });
 }
 
-function createFundersChart() {
+function createFundersChart(works) {
   destroyChart('funders');
-  
-  if (!fundersData || fundersData.length === 0) {
-    return;
-  }
 
-  const top10 = fundersData.slice(0, 10);
-  const labels = top10.map(f => 
-    f.name.length > 42 ? f.name.slice(0, 42) + '…' : f.name
+  const funderCounts = {};
+  works.forEach(w => {
+    (w.funders || []).forEach(f => {
+      const name = f.display_name;
+      if (name) funderCounts[name] = (funderCounts[name] || 0) + 1;
+    });
+  });
+
+  const top = Object.entries(funderCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10);
+
+  if (!top.length) return;
+
+  const labels = top.map(f =>
+    f[0].length > 42 ? f[0].slice(0, 42) + '…' : f[0]
   );
-  const data = top10.map(f => f.count);
+  const data = top.map(f => f[1]);
 
   const ctx = document.getElementById('chart-funders');
   charts.funders = new Chart(ctx, {
     type: 'bar',
     data: {
-      labels: labels,
+      labels,
       datasets: [{
-        data: data,
-        backgroundColor: COLORS.LSU_PURPLE,
+        data,
+        backgroundColor: COLORS.LSU_PURPLE
       }]
     },
     options: {
       indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { enabled: true },
-      },
-      scales: {
-        x: {
-          beginAtZero: true,
-          max: 8000,
-          grid: { color: '#e5e7eb' },
-          ticks: {
-            stepSize: 1000,
-            font: { family: 'Roboto, sans-serif', size: 12 },
-            color: '#7a6d96',
-          }
-        },
-        y: {
-          grid: { display: false },
-          ticks: {
-            font: { family: 'Roboto, sans-serif', size: 12 },
-            color: '#7a6d96',
-          }
-        }
-      }
+      plugins: { legend: { display: false } }
     }
   });
 }
+
 
 function createTrendsOAChart(works) {
   destroyChart('trendsOA');
@@ -1815,6 +1546,7 @@ function updateDashboard() {
   createJournalsChart(filtered);
   createTrendsOAChart(filtered);
   createTrendsPublisherChart(filtered);
+  createFundersChart(filtered);
   
   // Update tables
   createRecentTable(filtered);
@@ -1895,26 +1627,27 @@ function buildSliderTicks(minYear, maxYear) {
 
 async function init() {
   try {
-    // 1️⃣ Show UI immediately
     document.getElementById('loading').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
 
-    // 2️⃣ Load FAST charts only (aggregations)
-    await loadFastCharts();
+    const res = await fetch('/openalex/works_cache.json', { cache: 'no-store' });
+    const data = await res.json();
 
-    // 3️⃣ Lightweight data (funders)
-    fundersData = await fetchFunders();
-    if (fundersData?.length) {
-      createFundersChart();
-    }
+    allWorks = data.results || [];
+    worksLoaded = true;
 
-    console.log("Dashboard ready (aggregates loaded)");
+    setupSlidersFromWorks();
+    updateDashboard();
 
-  } catch (error) {
-    console.error("Error initializing dashboard:", error);
+    console.log(
+      `Loaded ${allWorks.length.toLocaleString()} works (cached at ${data.generated_at})`
+    );
+
+  } catch (err) {
+    console.error(err);
     document.getElementById('loading').innerHTML = `
-      <div>Error loading dashboard</div>
-      <div class="loading-sub">${error.message}</div>
+      <div>Error loading cached data</div>
+      <div class="loading-sub">${err.message}</div>
     `;
   }
 }
