@@ -1632,20 +1632,16 @@ function buildSliderTicks(minYear, maxYear) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function init() {
-  try {
-    const res = await fetch('./works_cache.json', { cache: 'no-store' });
-    const data = await res.json();
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('dashboard').style.display = 'block';
 
-    allWorks = data.results || []; 
-    console.log("Works loaded:", allWorks.length);
-    console.log("Sample work:", allWorks[0]);
-    worksLoaded = true;
+  allWorks = [];
 
-    document.getElementById('loading').style.display = 'none';
-    document.getElementById('dashboard').style.display = 'block';
+  await loadChunks();
 
-    setupSlidersFromWorks();
-    updateDashboard();
+  setupSlidersFromWorks();
+  updateDashboard();
+}
 
     console.log(
       `Loaded ${allWorks.length.toLocaleString()} works (cached at ${data.generated_at})`
@@ -1660,6 +1656,25 @@ async function init() {
   }
 }
 
+async function loadChunks() {
+  let cursor = null;
+
+  do {
+    const res = await fetch(
+      `./works_api.php?cursor=${cursor || ""}`
+    );
+
+    const data = await res.json();
+
+    allWorks = allWorks.concat(data.results);
+
+    cursor = data.meta?.next_cursor || null;
+
+    // optional progressive UI update
+    updateDashboard();
+
+  } while (cursor);
+}  
 
 // Start the app
 init();
