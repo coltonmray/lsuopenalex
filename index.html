@@ -1630,7 +1630,7 @@ async function init() {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
 
-    const res = await fetch('/openalex/works_cache.json', { cache: 'no-store' });
+    const res = await fetch('/works_cache.json', { cache: 'no-store' });
     const data = await res.json();
 
     allWorks = data.results || [];
