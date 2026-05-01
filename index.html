@@ -1632,41 +1632,46 @@ function buildSliderTicks(minYear, maxYear) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function init() {
-  document.getElementById('loading').style.display = 'none';
-  document.getElementById('dashboard').style.display = 'block';
+  try {
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('dashboard').style.display = 'block';
 
-  allWorks = [];
+    allWorks = [];
+    await loadChunks();
 
-  await loadChunks();
-
-  setupSlidersFromWorks();
-  updateDashboard();
-}
-
-    console.log(
-      `Loaded ${allWorks.length.toLocaleString()} works (cached at ${data.generated_at})`
-    );
-
+    setupSlidersFromWorks();
+    updateDashboard();
   } catch (err) {
     console.error(err);
     document.getElementById('loading').innerHTML = `
-      <div>Error loading cached data</div>
+      <div>Error loading data</div>
       <div class="loading-sub">${err.message}</div>
     `;
   }
 }
+
 
 async function loadChunks() {
   let cursor = null;
 
   do {
     const res = await fetch(
-      `./works_api.php?cursor=${cursor || ""}`
-    );
+      `./works_api.php?min=${CONFIG.START_YEAR}&max=${CONFIG.CURRENT_YEAR}&cursor=${cursor ?? 0}`
+    ); 
 
     const data = await res.json();
 
     allWorks = allWorks.concat(data.results);
+
+    data.results.forEach(w => {
+      w.open_access = {
+        is_oa: !!w.is_oa,
+        oa_status: w.oa_status
+      };
+      w.apc_list = w.apc_value
+        ? { value_usd: w.apc_value }
+        : null;
+    });
 
     cursor = data.meta?.next_cursor || null;
 
