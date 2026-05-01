@@ -439,8 +439,8 @@
 
   <!-- Loading indicator -->
   <div id="loading" class="loading">
-    <div>Loading data from OpenAlex...</div>
-    <div class="loading-sub">This may take a few minutes on first load.</div>
+    <div>Loading data from server cache...</div>
+    <div class="loading-sub">Please wait...</div>
   </div>
 
   <!-- Dashboard content -->
@@ -602,8 +602,6 @@ Chart.defaults.plugins.datalabels = {
 const CONFIG = {
   INSTITUTION_ID: "I121820613",
   ROR_ID: "05ect4e57",
-  BASE_URL: "https://api.openalex.org",
-  MAILTO: "lsulibrary@lsu.edu",
   START_YEAR: 2020,
   CURRENT_YEAR: new Date().getFullYear(),
   CACHE_MAX_AGE_HOURS: 24,
@@ -631,8 +629,6 @@ const COLORS = {
 let allWorks = [];
 let fundersData = [];
 let charts = {};
-
-
 
 /* ================= IndexedDB Cache ================= */
 
@@ -714,99 +710,62 @@ async function saveCache(data) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 async function fetchWorks() {
-  console.log("Fetching works from OpenAlex…");
+  console.log("Fetching works from server cache…");
 
-  const filterString =
-    `institutions.ror:${CONFIG.ROR_ID},` +
-    `from_publication_date:${CONFIG.START_YEAR}-01-01,` +
-    `to_publication_date:${CONFIG.CURRENT_YEAR}-12-31`;
+  try {
+    const url = "works_api.php";
+    const res = await fetch(url);
 
-  const fields =
-    "id,title,publication_year,cited_by_count,primary_location," +
-    "open_access,type,doi,apc_list,apc_paid,publication_date," +
-    "authorships,primary_topic";
-
-  let cursor = "*";
-  let results = [];
-
-  while (true) {
-    const params = new URLSearchParams({
-      filter: filterString,
-      "per-page": 200,
-      cursor,
-      select: fields,
-      sort: "publication_year:desc",
-      mailto: CONFIG.MAILTO,
-    });
-
-    const url = `${CONFIG.BASE_URL}/works?${params}`;
-
-    let data = null;
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        const res = await fetch(url);
-
-        if (!res.ok) {
-          if (res.status >= 500) {
-            console.warn("OpenAlex 5xx error, retrying…");
-            await new Promise(r => setTimeout(r, 1500));
-            continue;
-          }
-          throw new Error(`HTTP ${res.status}`);
-        }
-
-        data = await res.json();
-        break;
-      } catch (err) {
-        console.error("Fetch error:", err);
-        if (attempt === 4) throw err;
-        await new Promise(r => setTimeout(r, 1000));
-      }
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}: ${res.statusText}`);
     }
 
-    if (!data || !data.results?.length) break;
+    const data = await res.json();
 
-    results.push(...data.results);
+    if (data.error) {
+      throw new Error(data.error);
+    }
 
-    console.log(
-      `Fetched ${results.length} / ${data.meta?.count ?? "?"} works…`
-    );
+    if (!data.results || !Array.isArray(data.results)) {
+      throw new Error("Invalid response format from server");
+    }
 
-    cursor = data.meta?.next_cursor;
-    if (!cursor || cursor === "*") break;
+    console.log(`Loaded ${data.results.length} works from cache`);
+    
+    if (data.meta?.last_updated) {
+      const updated = new Date(data.meta.last_updated);
+      console.log(`Cache last updated: ${updated.toLocaleString()}`);
+    }
 
-    await new Promise(r => setTimeout(r, 120)); // gentle rate limiting
+    await saveCache(data.results);
+    return data.results;
+
+  } catch (err) {
+    console.error("Error fetching from server:", err);
+    throw new Error(`Failed to load data: ${err.message}`);
   }
-
-  console.log("Fetch complete — saving to cache:", results.length);
-
-  await saveCache(results);
-  return results;
 }
 
 async function fetchFunders() {
-  try {
-    const params = new URLSearchParams({
-      filter: `institutions.ror:${CONFIG.ROR_ID}`,
-      "group-by": "funders.id",
-      "per-page": 10,
-      mailto: CONFIG.MAILTO,
-    });
-
-    const url = `${CONFIG.BASE_URL}/works?${params}`;
-    const res = await fetch(url);
-    const data = await res.json();
-    
-    const groups = data.group_by || [];
-    return groups.map(g => ({
-      name: g.key_display_name || g.key.split('/').pop(),
-      count: g.count
-    }));
-  } catch (e) {
-    console.error("Error fetching funders:", e);
-    return [];
-  }
+  // Funders are now calculated from the works data
+  // since we're not calling OpenAlex API directly
+  const funderCounts = {};
+  
+  allWorks.forEach(w => {
+    if (w.grants && Array.isArray(w.grants)) {
+      w.grants.forEach(grant => {
+        const funder = grant.funder || grant.funder_display_name;
+        if (funder) {
+          funderCounts[funder] = (funderCounts[funder] || 0) + 1;
+        }
+      });
+    }
+  });
+  
+  return Object.entries(funderCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([name, count]) => ({ name, count }));
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -842,20 +801,16 @@ function filterWorksByYear(works, minYear, maxYear) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 function showTab(tabName, element) {
-  // Hide all tab contents
   document.querySelectorAll('.tab-content').forEach(el => {
     el.classList.remove('active');
   });
   
-  // Deactivate all tabs
   document.querySelectorAll('.tab').forEach(el => {
     el.classList.remove('active');
   });
   
-  // Show selected tab content
   document.getElementById(`tab-${tabName}`).classList.add('active');
   
-  // Activate selected tab
   if (element) {
     element.classList.add('active');
   }
@@ -864,20 +819,16 @@ function showTab(tabName, element) {
 function showNestedTab(tabName, element) {
   const parent = element.closest('.card');
   
-  // Hide all nested contents in this card
   parent.querySelectorAll('.nested-content').forEach(el => {
     el.classList.remove('active');
   });
   
-  // Deactivate all nested tabs in this card
   parent.querySelectorAll('.nested-tab').forEach(el => {
     el.classList.remove('active');
   });
   
-  // Show selected nested content
   parent.querySelector(`#nested-${tabName}`).classList.add('active');
   
-  // Activate selected nested tab
   element.classList.add('active');
 }
 
@@ -1292,10 +1243,8 @@ function createFundersChart() {
       scales: {
         x: {
           beginAtZero: true,
-          max: 8000,
           grid: { color: '#e5e7eb' },
           ticks: {
-            stepSize: 1000,
             font: { family: 'Roboto, sans-serif', size: 12 },
             color: '#7a6d96',
           }
@@ -1728,18 +1677,21 @@ function syncSliders() {
 
 async function init() {
   try {
+    // Try to load from IndexedDB cache first for instant display
     const cachedWorks = await loadCache();
     const cacheFresh = await isCacheFresh();
 
     if (cacheFresh && cachedWorks && cachedWorks.length) {
-      console.log("Using cached OpenAlex data");
+      console.log("Using IndexedDB cache");
       allWorks = cachedWorks;
-      fundersData = await fetchFunders(); // optional — small & cheap
     } else {
-      console.log("Cache missing or expired — fetching OpenAlex");
-      allWorks = await fetchWorks();       // this saves cache
-      fundersData = await fetchFunders();
+      // Load from server
+      console.log("Fetching from server cache");
+      allWorks = await fetchWorks();
     }
+    
+    // Calculate funders data
+    fundersData = await fetchFunders();
     
     // Find year range
     const years = allWorks.map(w => w.publication_year).filter(Boolean);
@@ -1761,36 +1713,32 @@ async function init() {
     minSlider.addEventListener('input', syncSliders);
     maxSlider.addEventListener('input', syncSliders);
 
-// Build slider ticks
-const ticksContainer = document.getElementById('slider-ticks');
-ticksContainer.innerHTML = '';
+    // Build slider ticks
+    const ticksContainer = document.getElementById('slider-ticks');
+    ticksContainer.innerHTML = '';
 
-const step = 2; // change to 2 if too crowded
+    const step = 2;
 
-for (let y = minYear; y <= maxYear; y += step) {
-  const span = document.createElement('span');
+    for (let y = minYear; y <= maxYear; y += step) {
+      const span = document.createElement('span');
 
+      const range = maxYear - minYear || 1;
+      const pct = (y - minYear) / range;
+      span.style.left = `${pct * 100}%`;
 
-  const range = maxYear - minYear || 1;
-  const pct = (y - minYear) / range;
-  span.style.left = `${pct * 100}%`;
+      span.textContent = y;
 
+      if (y % 2 === 0) {
+        span.style.fontWeight = '600';
+      }
 
-  span.textContent = y;
-
-  // optional: emphasize decade or even years
-  if (y % 2 === 0) {
-    span.style.fontWeight = '600';
-  }
-
-  ticksContainer.appendChild(span);
-}
+      ticksContainer.appendChild(span);
+    }
         
-    // Create funders chart (doesn't change with year filter)
-  if (fundersData && fundersData.length) {
-    createFundersChart();
-  }
-
+    // Create funders chart
+    if (fundersData && fundersData.length) {
+      createFundersChart();
+    }
     
     // Initial dashboard update
     updateDashboard();
@@ -1799,15 +1747,15 @@ for (let y = minYear; y <= maxYear; y += step) {
     document.getElementById('loading').style.display = 'none';
     document.getElementById('dashboard').style.display = 'block';
     
-    console.log(`Ready - ${allWorks.length.toLocaleString()} works loaded.`);
+    console.log(`Dashboard ready - ${allWorks.length.toLocaleString()} works loaded.`);
     
   } catch (error) {
     console.error('Error initializing dashboard:', error);
     document.getElementById('loading').innerHTML = `
-      <div>Error loading data from OpenAlex</div>
+      <div>Error loading data</div>
       <div class="loading-sub">${error.message}</div>
       <div class="loading-sub" style="margin-top: 16px;">
-        <button onclick="location.reload()" style="padding: 8px 16px; cursor: pointer;">Retry</button>
+        <button onclick="location.reload()" style="padding: 8px 16px; cursor: pointer; background: #461D7C; color: white; border: none; border-radius: 6px;">Retry</button>
       </div>
     `;
   }
