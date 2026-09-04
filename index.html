@@ -412,7 +412,7 @@
 
 <!-- Header -->
 <div class="header">
-  <img src="https://commons.wikimedia.org/w/index.php?title=Special:Redirect/file/Louisiana%20State%20University%20%28logo%29.svg" 
+  <img src="https://avatars.githubusercontent.com/u/11303179?s=200&v=4" 
        alt="LSU Logo" class="header-logo">
   <div class="header-text">
     <div class="header-title">Louisiana State University</div>
@@ -584,7 +584,7 @@
 
 <!-- Footer -->
 <div class="footer">
-  <span>Louisiana State University · OpenAlex Research Dashboard</span>
+  <span>For questions or concerns about this dashboard, contact · <a href="coltonray@lsu.edu" target="_blank"></a></span>
   <span>Data via <a href="https://openalex.org" target="_blank">OpenAlex</a></span>
 </div>
 
@@ -747,21 +747,17 @@ async function fetchWorks() {
 }
 
 async function fetchFunders() {
-  // Funders are now calculated from the works data
-  // since we're not calling OpenAlex API directly
   const funderCounts = {};
   
   allWorks.forEach(w => {
-    if (w.grants && Array.isArray(w.grants)) {
-      w.grants.forEach(grant => {
-        const funder = grant.funder || grant.funder_display_name;
-        if (funder) {
-          funderCounts[funder] = (funderCounts[funder] || 0) + 1;
-        }
+    if (Array.isArray(w.funders)) {
+      w.funders.forEach(name => {
+        if (!name) return;
+        funderCounts[name] = (funderCounts[name] || 0) + 1;
       });
     }
   });
-  
+
   return Object.entries(funderCounts)
     .sort((a, b) => b[1] - a[1])
     .slice(0, 10)
@@ -1208,6 +1204,8 @@ function createJournalsChart(works) {
     }
   });
 }
+
+const counts = {};
 
 function createFundersChart() {
   destroyChart('funders');
