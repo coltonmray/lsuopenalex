@@ -12,7 +12,7 @@ set_time_limit(0);
 $ROR_ID     = "05ect4e57";
 $START_YEAR = 2020;
 $MAILTO     = "lsulibrary@lsu.edu";
-
+$OPENALEX_API_KEY = "0YhSOIcS5c8tcbR9XwLDL6";
 $DB_FILE   = "/home/lsuopena/tmp/openalex.sqlite";
 $META_FILE = "/home/lsuopena/tmp/cache_metadata.json";
 $LOG_FILE  = __DIR__ . "/fetch_log.txt";
