@@ -154,10 +154,11 @@ while (true) {
         'filter'   => $filter,
         'per-page' => 100,
         'cursor'   => $cursor,
+        'sort'     => 'publication_date:desc',
         'select'   =>
             "id,title,publication_year,publication_date,cited_by_count," .
             "primary_location,open_access,type,doi,apc_list," .
-            "authorships,primary_topic,funders",
+            "authorships,primary_topic,grants",
         'mailto'   => $MAILTO
     ], '', '&', PHP_QUERY_RFC3986);
 
@@ -323,10 +324,10 @@ while (true) {
 
                 $funders = [];
 
-                foreach ($w['funders'] ?? [] as $f) {
+                foreach ($w['grants'] ?? [] as $f) {
 
-                    if (!empty($f['display_name'])) {
-                        $funders[] = $f['display_name'];
+                    if (!empty($f['funder_display_name'])) {
+                        $funders[] = $f['funder_display_name'];
                     }
                 }
 
