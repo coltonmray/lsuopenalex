@@ -145,6 +145,9 @@ while ($row = $stmt->fetch()) {
     }
   }
 
+  $row['funders'] = json_decode($row['funders'], true);
+  $row['authors'] = json_decode($row['authors'], true);
+
   if (!$first) echo ',';
   echo json_encode($work, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 
