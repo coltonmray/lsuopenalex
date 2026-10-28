@@ -152,7 +152,7 @@ while (true) {
 
     $query = http_build_query([
         'filter'   => $filter,
-        'per-page' => 100,
+        'per-page' => 200,
         'cursor'   => $cursor,
         'sort'     => 'publication_date:desc',
         'select'   =>
@@ -160,6 +160,7 @@ while (true) {
             "primary_location,open_access,type,doi,apc_list," .
             "authorships,primary_topic,grants",
         'mailto'   => $MAILTO
+        'api_key'  => $OPENALEX_API_KEY
     ], '', '&', PHP_QUERY_RFC3986);
 
     $url = "$BASE_URL?$query";
