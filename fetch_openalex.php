@@ -336,8 +336,8 @@ while (true) {
 
                 foreach ($w['funders'] ?? [] as $f) {
 
-                    if (!empty($f['funder_display_name'])) {
-                        $funders[] = $f['funder_display_name'];
+                    if (!empty($f['display_name'])) {
+                        $funders[] = $f['display_name'];
                     }
                 }
 
