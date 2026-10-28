@@ -325,7 +325,7 @@ while (true) {
 
                 $funders = [];
 
-                foreach ($w['grants'] ?? [] as $f) {
+                foreach ($w['funders'] ?? [] as $f) {
 
                     if (!empty($f['funder_display_name'])) {
                         $funders[] = $f['funder_display_name'];
