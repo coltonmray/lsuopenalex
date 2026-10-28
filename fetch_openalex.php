@@ -158,7 +158,7 @@ while (true) {
         'select'   =>
             "id,title,publication_year,publication_date,cited_by_count," .
             "primary_location,open_access,type,doi,apc_list," .
-            "authorships,primary_topic,grants",
+            "authorships,primary_topic,funders",
         'mailto'   => $MAILTO,
         'api_key'  => $OPENALEX_API_KEY
     ], '', '&', PHP_QUERY_RFC3986);
