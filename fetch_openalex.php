@@ -291,6 +291,15 @@ while (true) {
         try {
 
             foreach ($results as $w) {
+                if ($total === 0) {
+                    file_put_contents(
+                        __DIR__ . '/funders_debug.json',
+                        json_encode(
+                            $w['funders'] ?? null,
+                            JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE
+                        )
+                    );
+                }
 
                 // ─────────────────────────────
                 // AUTHORS
